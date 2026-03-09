@@ -80,7 +80,7 @@ jobs:
       - wasmshim-latest-digest
       - devportal-controlller-latest-digest
       - console-plugin-latest-digest
-      - console-plugin-pf5-latest-digest
+      - console-plugin-pf5-digest
     name: Calls build-images-base workflow
     uses: ./.github/workflows/build-images-base.yaml
     secrets: inherit
@@ -95,5 +95,5 @@ jobs:
       relatedImageWasmShim: quay.io/kuadrant/wasm-shim@${{ needs.wasmshim-latest-digest.outputs.wasmshim_digest }}
       relatedImageDeveloperPortalController: quay.io/kuadrant/wasm-shim@${{ needs.devportal-controlller-latest-digest.outputs.devportal_controller_digest }}
       relatedImageConsolePluginLatest: quay.io/kuadrant/console-plugin@${{ needs.console-plugin-latest-digest.outputs.console_plugin_digest }}
-      relatedImageConsolePluginPF5: quay.io/kuadrant/console-plugin@${{ needs.console-plugin-pf5-latest-digest.outputs.console_plugin_pf5_digest }}
+      relatedImageConsolePluginPF5: quay.io/kuadrant/console-plugin@${{ needs.console-plugin-pf5-digest.outputs.console_plugin_pf5_digest }}
       quayImageExpiry: 2w
