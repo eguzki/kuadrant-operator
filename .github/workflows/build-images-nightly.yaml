@@ -59,12 +59,28 @@ jobs:
           DIGEST=$(crane digest quay.io/kuadrant/console-plugin:latest)
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
           echo "Console plugin latest digest: ${DIGEST}"
+  console-plugin-pf5-digest:
+    name: Get the digest sha of the latest console plugin PF5 docker image
+    runs-on: ubuntu-latest
+    outputs:
+      console_plugin_pf5_digest: ${{ steps.console-plugin-pf5-get-digest.outputs.digest }}
+    steps:
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.1
+      - id: console-plugin-pf5-get-digest
+        name: Get digest of latest console plugin pf5 image
+        run: |
+          # Get the manifest digest of the latest tag (works for both single-arch and multi-arch images)
+          DIGEST=$(crane digest quay.io/kuadrant/console-plugin:v0.1.5-2)
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+          echo "Console plugin pf5 latest digest: ${DIGEST}"
   workflow-build:
     needs:
       - release-date
       - wasmshim-latest-digest
       - devportal-controlller-latest-digest
       - console-plugin-latest-digest
+      - console-plugin-pf5-latest-digest
     name: Calls build-images-base workflow
     uses: ./.github/workflows/build-images-base.yaml
     secrets: inherit
@@ -79,4 +95,5 @@ jobs:
       relatedImageWasmShim: quay.io/kuadrant/wasm-shim@${{ needs.wasmshim-latest-digest.outputs.wasmshim_digest }}
       relatedImageDeveloperPortalController: quay.io/kuadrant/wasm-shim@${{ needs.devportal-controlller-latest-digest.outputs.devportal_controller_digest }}
       relatedImageConsolePluginLatest: quay.io/kuadrant/console-plugin@${{ needs.console-plugin-latest-digest.outputs.console_plugin_digest }}
+      relatedImageConsolePluginPF5: quay.io/kuadrant/console-plugin@${{ needs.console-plugin-pf5-latest-digest.outputs.console_plugin_pf5_digest }}
       quayImageExpiry: 2w
