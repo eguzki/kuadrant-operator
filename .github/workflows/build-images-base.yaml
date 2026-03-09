@@ -112,7 +112,7 @@ on:
 
 env:
   IMG_REGISTRY_HOST: quay.io
-  IMG_REGISTRY_ORG: eguzki
+  IMG_REGISTRY_ORG: eastizle
   MAIN_BRANCH_NAME: main
   OPERATOR_NAME: kuadrant-operator
   QUAY_IMAGE_EXPIRY: ${{ inputs.quayImageExpiry }}
