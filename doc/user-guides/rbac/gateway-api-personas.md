@@ -80,7 +80,7 @@ The Application Developer manages application-level policies that control traffi
   - OIDC policies (`oidcpolicies`)
   - Plan policies (`planpolicies`)
   - Telemetry policies (`telemetrypolicies`)
-  - Threat policies (`threatpolicies`)
+- Managing application secrets (API keys, OIDC client secrets, credentials)
 - Attaching routes to shared Gateways (managed by Cluster Operators)
 - Viewing Gateways and cluster-level policies (read-only)
 
@@ -311,7 +311,6 @@ rules:
   - oidcpolicies
   - planpolicies
   - telemetrypolicies
-  - threatpolicies
   verbs:
   - get
   - list
@@ -322,7 +321,6 @@ rules:
   - oidcpolicies/status
   - planpolicies/status
   - telemetrypolicies/status
-  - threatpolicies/status
   verbs:
   - get
   - watch
@@ -344,6 +342,10 @@ subjects:
 - kind: User
   name: chihiro@example.com
   apiGroup: rbac.authorization.k8s.io
+# Or for a service account
+- kind: ServiceAccount
+  name: cluster-operator-sa
+  namespace: gateway-system
 # Or for a group
 - kind: Group
   name: cluster-operators
@@ -440,7 +442,6 @@ rules:
   - oidcpolicies
   - planpolicies
   - telemetrypolicies
-  - threatpolicies
   verbs:
   - create
   - delete
@@ -455,7 +456,6 @@ rules:
   - oidcpolicies/status
   - planpolicies/status
   - telemetrypolicies/status
-  - threatpolicies/status
   verbs:
   - get
   - watch
@@ -501,6 +501,20 @@ rules:
   verbs:
   - get
   - list
+  - watch
+
+# Secret management (API keys, OIDC client secrets, credentials, etc.)
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 ```
 
@@ -594,7 +608,6 @@ rules:
   - oidcpolicies
   - planpolicies
   - telemetrypolicies
-  - threatpolicies
   verbs:
   - get
   - list
@@ -605,7 +618,6 @@ rules:
   - oidcpolicies/status
   - planpolicies/status
   - telemetrypolicies/status
-  - threatpolicies/status
   verbs:
   - get
   - watch
@@ -626,9 +638,42 @@ rules:
 
 ## Practical Examples
 
-### Example 1: Multi-Namespace Application Developer
+### Example 1: Grant Application Developer Permissions to a User or Service Account
 
-An application developer manages multiple namespaces but should only manage policies in those namespaces:
+Grant Application Developer permissions to a user in a specific namespace:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ana-application-developer
+  namespace: my-application
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kuadrant-application-developer
+subjects:
+- kind: User
+  name: ana@example.com
+  apiGroup: rbac.authorization.k8s.io
+# Or for a service account
+- kind: ServiceAccount
+  name: app-operator-sa
+  namespace: my-application
+```
+
+With these permissions, Application Developers can:
+
+- Create and manage HTTPRoutes and GRPCRoutes in the `my-application` namespace
+- Create route-level policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy) targeting their routes
+- Create extension policies (OIDCPolicy, PlanPolicy, TelemetryPolicy)
+- Manage application secrets (API keys, OIDC client secrets)
+- View (read-only) Gateways to attach their routes
+- Attach their routes to shared Gateways managed by Cluster Operators
+
+### Example 2: Multi-Namespace Application Developer
+
+Application developers are assigned to groups that manage Kuadrant policies and Gateway API resources in their respective namespaces:
 
 ```yaml
 ---
@@ -672,96 +717,15 @@ subjects:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-### Example 2: Cluster Operator Creating and Managing a Gateway
+### Example 3: Grant Cluster Operator Permissions to a User or Service Account
 
-A cluster operator creates a shared Gateway and enforces a baseline rate limit on all traffic:
-
-```yaml
----
-# Step 1: Cluster Operator creates a Gateway
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: shared-gateway
-  namespace: gateway-system
-spec:
-  gatewayClassName: istio
-  listeners:
-  - name: http
-    protocol: HTTP
-    port: 80
-    allowedRoutes:
-      namespaces:
-        from: All  # Allow routes from all namespaces
-
----
-# Step 2: Cluster Operator creates a Gateway-level RateLimitPolicy
-apiVersion: kuadrant.io/v1
-kind: RateLimitPolicy
-metadata:
-  name: gateway-global-limit
-  namespace: gateway-system
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: shared-gateway
-  limits:
-    "global":
-      rates:
-      - limit: 1000
-        window: 1s
-```
-
-This setup provides:
-
-- A shared Gateway that Application Developers can attach their HTTPRoutes to
-- A baseline rate limit enforced on ALL traffic through this Gateway
-- Application Developers can still add route-specific policies for additional controls
-
-### Example 3: Cluster Operator Managing DNS
-
-A cluster operator needs to configure DNS for multiple gateways across the cluster. First, create the DNS provider secret:
+Grant Cluster Operator permissions to a user in the gateway-system namespace:
 
 ```yaml
----
-# DNS provider secret (contains cloud credentials)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: aws-credentials
-  namespace: gateway-system
-type: kuadrant.io/aws
-stringData:
-  AWS_ACCESS_KEY_ID: "AKIAIOSFODNN7EXAMPLE"
-  AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-  AWS_REGION: "us-east-1"
-
----
-# DNSPolicy targeting a Gateway
-apiVersion: kuadrant.io/v1
-kind: DNSPolicy
-metadata:
-  name: gateway-dns
-  namespace: gateway-system
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: shared-gateway
-  providerRefs:
-    - name: aws-credentials
-```
-
-Grant Cluster Operator permissions:
-
-```yaml
----
-# RoleBinding scopes Secret permissions to gateway-system namespace only
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: dns-admin
+  name: chihiro-cluster-operator
   namespace: gateway-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -769,16 +733,24 @@ roleRef:
   name: kuadrant-cluster-operator
 subjects:
 - kind: User
-  name: dns-admin@example.com
+  name: chihiro@example.com
   apiGroup: rbac.authorization.k8s.io
+# Or for a service account
+- kind: ServiceAccount
+  name: gateway-operator-sa
+  namespace: gateway-system
 ```
 
-This user can now:
+With these permissions, Cluster Operators can:
 
-- Create and manage DNSPolicy resources
-- View DNSRecord resources created by the operator
-- Create and manage DNS provider secrets (containing cloud credentials)
-- Monitor DNS health and status across all gateways
+- Create and manage shared Gateways for multiple applications
+- Deploy and manage Kuadrant infrastructure (Kuadrant CR, Limitador, Authorino)
+- Configure DNS and TLS for Gateways
+- Create Gateway-level policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy targeting Gateways)
+- Manage DNS provider credentials (Secrets)
+- Monitor all policies and routes across the cluster
+
+For an example of the **Cluster Operator** persona managing Gateways and baseline (Gateway-level) rate limit policies, see [Gateway Rate Limiting for Cluster Operators](https://github.com/Kuadrant/kuadrant-operator/blob/main/doc/user-guides/ratelimiting/gateway-rl-for-cluster-operators.md).
 
 ### Example 4: Application Developer Creating Routes and Policies
 
@@ -903,8 +875,49 @@ This service account can deploy HTTPRoutes, AuthPolicies, and RateLimitPolicies 
 
 - Application Developers should NOT be able to create or modify Gateways
 - Application Developers should create policies targeting only HTTPRoutes/GRPCRoutes
+  - **Note**: RBAC roles cannot restrict the value of policy fields (like `targetRef.kind`). To enforce this restriction, use Kubernetes [ValidatingAdmissionPolicy](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/) (see example below).
 - Cluster Operators can create both Gateway-level and Route-level policies
 - Use Gateway API's ReferenceGrant for cross-namespace route attachment
+
+<details>
+<summary><b>Example: Enforcing Policy Target Restrictions with ValidatingAdmissionPolicy</b></summary>
+
+To prevent Application Developers from creating policies that target Gateways, use ValidatingAdmissionPolicy:
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "policy-target-validation-policy"
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["kuadrant.io"]
+      apiVersions: ["v1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["authpolicies", "ratelimitpolicies", "tokenratelimitpolicies"]
+  validations:
+  - expression: 'object.spec.targetRef.kind in ["HTTPRoute", "GRPCRoute"]'
+    message: "Policy targetRef.kind must be either 'HTTPRoute' or 'GRPCRoute'"
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: "policy-target-validation-frontend"
+spec:
+  policyName: "policy-target-validation-policy"
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: frontend
+```
+
+This policy ensures that in the `frontend` namespace, all AuthPolicy, RateLimitPolicy, and TokenRateLimitPolicy resources can only target HTTPRoute or GRPCRoute resources, preventing developers from creating Gateway-level policies.
+
+</details>
 
 ### Gateway-level vs Route-level Policies
 
