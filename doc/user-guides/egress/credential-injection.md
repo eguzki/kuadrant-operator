@@ -115,8 +115,8 @@ EOF
 
 **How it works:**
 - `authentication.workload-identity` - validates the workload's Kubernetes SA token via [TokenReview](https://kubernetes.io/docs/reference/kubernetes-api/authentication-resources/token-review-v1/). No API keys to distribute - every pod already has an SA token mounted.
-- `metadata.vault_login` - POSTs the SA token to Vault's Kubernetes auth endpoint. Vault validates the token and returns a scoped client token based on the workload's namespace and service account.
-- `metadata.vault_secret` - reads the external credential from Vault at a path derived from the workload's namespace and service account (e.g., `secret/egress/egress-test/default`). Each workload identity gets its own credential.
+- `metadata.vault_login` (`priority: 0`) — POSTs the SA token to Vault's Kubernetes auth endpoint. Vault validates the token and returns a scoped client token based on the workload's namespace and service account.
+- `metadata.vault_secret` (`priority: 1`, runs after `vault_login`) — reads the external credential from Vault at a path derived from the workload's namespace and service account (e.g., `secret/egress/egress-test/default`). Uses the client token from `vault_login`. Each workload identity gets its own credential.
 - `authorization.vault_credential_check` - verifies the Vault credential fetch succeeded. If the workload's SA isn't authorized by Vault's policy, the request is denied (403).
 - `response.success.headers.authorization` - overwrites the `Authorization` header with the external credential. The workload's SA token never reaches the external service.
 
