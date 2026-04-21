@@ -17,7 +17,7 @@ This guide focuses on the **Cluster Operator** and **Application Developer** per
 Kuadrant policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy) can target different Gateway API resources:
 
 - **Gateway-level policies**: Target a Gateway resource and affect all routes attached to that Gateway
-  - Managed by Cluster Operators (cluster-wide governance)
+  - Managed by Cluster Operators (governance for shared infrastructure)
   - Example: Rate limiting all traffic through a shared ingress gateway
   
 - **Route-level policies**: Target HTTPRoute or GRPCRoute resources and affect only that specific route
@@ -44,7 +44,7 @@ The Infrastructure Provider typically manages the underlying Kubernetes infrastr
 
 ### Cluster Operator
 
-The Cluster Operator manages cluster-level resources and establishes governance policies that affect multiple applications and tenants.
+The Cluster Operator manages shared infrastructure resources and establishes governance policies that affect multiple applications and tenants within their assigned namespace(s).
 
 **Kuadrant-related responsibilities:**
 
@@ -63,7 +63,7 @@ The Cluster Operator manages cluster-level resources and establishes governance 
   - Authentication policies (`authpolicies`) targeting Gateways
   - Rate limiting policies (`ratelimitpolicies`) targeting Gateways
   - Token rate limiting policies (`tokenratelimitpolicies`) targeting Gateways
-- Viewing and monitoring all policies and routes across namespaces
+- Viewing and monitoring all policies and routes in their assigned namespace(s)
 
 ### Application Developer
 
@@ -82,7 +82,7 @@ The Application Developer manages application-level policies that control traffi
   - Telemetry policies (`telemetrypolicies`)
 - Managing application secrets (API keys, OIDC client secrets, credentials)
 - Attaching routes to shared Gateways (managed by Cluster Operators)
-- Viewing Gateways and cluster-level policies (read-only)
+- Viewing Gateways and Gateway-level policies (read-only)
 
 ## RBAC Configuration
 
@@ -358,7 +358,7 @@ With these permissions, Cluster Operators can:
 - Deploy and manage Kuadrant infrastructure (Kuadrant CR, Limitador, Authorino)
 - Configure DNS and TLS for Gateways
 - Create Gateway-level policies (AuthPolicy, RateLimitPolicy targeting Gateways)
-- Monitor all policies and routes across the cluster
+- Monitor all policies and routes in the gateway-system namespace
 
 ### Application Developer Roles
 
@@ -748,7 +748,7 @@ With these permissions, Cluster Operators can:
 - Configure DNS and TLS for Gateways
 - Create Gateway-level policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy targeting Gateways)
 - Manage DNS provider credentials (Secrets)
-- Monitor all policies and routes across the cluster
+- Monitor all policies and routes in the gateway-system namespace
 
 For an example of the **Cluster Operator** persona managing Gateways and baseline (Gateway-level) rate limit policies, see [Gateway Rate Limiting for Cluster Operators](https://github.com/Kuadrant/kuadrant-operator/blob/main/doc/user-guides/ratelimiting/gateway-rl-for-cluster-operators.md).
 
@@ -861,7 +861,7 @@ This service account can deploy HTTPRoutes, AuthPolicies, and RateLimitPolicies 
 
 - Grant only the minimum permissions necessary for each role
 - Use namespace-scoped RoleBindings to limit permissions to specific namespaces
-- Separate cluster-level infrastructure management from application policy management
+- Separate shared infrastructure management from application policy management
 
 ### Resource Management Separation
 
@@ -923,10 +923,10 @@ This policy ensures that in the `frontend` namespace, all AuthPolicy, RateLimitP
 
 **When to use Gateway-level policies (Cluster Operator):**
 
-- Enforcing organization-wide security baselines
-- Setting global rate limits for infrastructure protection
-- Applying default authentication requirements for all services
-- Managing DNS and TLS for the entire gateway
+- Enforcing security baselines for all routes attached to the Gateway
+- Setting rate limits for infrastructure protection
+- Applying default authentication requirements for all services using the Gateway
+- Managing DNS and TLS for the Gateway
 
 **When to use Route-level policies (Application Developer):**
 
