@@ -222,7 +222,7 @@ Authorino [JSON path string modifiers](https://docs.kuadrant.io/latest/authorino
 
 ## Egress
 
-AuthPolicy works on egress gateways with the same attachment model described above. On egress, the primary use case is **credential injection** — authenticating workloads via Kubernetes service account tokens and injecting external API credentials (from Vault) into outbound requests via `metadata.http` + `response.success.headers`.
+AuthPolicy works on egress gateways with the same attachment model described above. On egress, the primary use case is **credential injection** — i.e., authenticating workloads using a common authentication mechanism at the gateway (e.g. Kubernetes service account tokens) and injecting specific external API credentials (e.g. API key fetched from Vault) into the outbound requests, typically replacing the `Authorization` header.
 
 The Gateway resource and policy attachment model are identical between ingress and egress — the Kuadrant operator does not distinguish between them. See the [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md) guide for a full walkthrough.
 
