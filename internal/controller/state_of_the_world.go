@@ -822,7 +822,7 @@ func (b *BootOptionsBuilder) finalStepsWorkflow() *controller.Workflow {
 	if b.isGatewayAPIInstalled {
 		workflow.Tasks = append(workflow.Tasks,
 			traceReconcileFunc("finalize.gateway_policy_discoverability", NewGatewayPolicyDiscoverabilityReconciler(b.client).Subscription().Reconcile),
-			traceReconcileFunc("finalize.httproute_policy_discoverability", NewHTTPRoutePolicyDiscoverabilityReconciler(b.client).Subscription().Reconcile),
+			traceReconcileFunc("finalize.route_policy_discoverability", NewRoutePolicyDiscoverabilityReconciler(b.client).Subscription().Reconcile),
 		)
 	}
 
