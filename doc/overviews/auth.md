@@ -1,65 +1,108 @@
 # Kuadrant Auth
 
+## Secure API access with authentication and authorization
+
+When protecting APIs in your Kubernetes infrastructure, you need to verify who is making requests (authentication) and what they're allowed to do (authorization). Kuadrant provides flexible authentication and authorization capabilities through the AuthPolicy custom resource, helping you balance security requirements with operational simplicity.
+
+### Common authentication and authorization jobs
+
+Kuadrant AuthPolicy helps you accomplish these common security tasks:
+
+| Job | When you need this | Solution |
+|-----|-------------------|----------|
+| **Secure API access with appropriate authentication** | APIs need protection but different use cases require different authentication methods | Choose from API keys, JWT/OIDC, X.509 certificates, OAuth2 introspection, Kubernetes TokenReview, or allow anonymous access based on your security and compliance requirements |
+| **Verify cryptographic identity with client certificates** | Your organization requires strong identity verification, zero-trust architecture, or compliance with security standards | Use X.509 client certificate authentication with defense-in-depth validation at both TLS and application layers |
+| **Control access with fine-grained authorization** | Authenticated users need different permissions based on roles, attributes, or complex business logic | Enforce authorization rules using pattern matching, OPA policies, Kubernetes RBAC, or SpiceDB |
+| **Apply consistent security policies across API infrastructure** | You manage multiple APIs and routes and need to balance developer flexibility with platform governance | Apply AuthPolicies at Gateway or HTTPRoute level with defaults and overrides to establish security baselines |
+| **Secure outbound API calls with centralized credential management** | Services call external APIs requiring authentication, and you want to avoid distributing secrets to every pod | Use egress gateway credential injection to authenticate internal workloads and inject external API credentials at the gateway |
+
+## Understanding how Kuadrant auth integrates with your infrastructure
+
+When evaluating Kuadrant for API security, you'll want to understand how it fits into your existing Kubernetes and Gateway API infrastructure without requiring changes to your application code.
+
+### How authentication requests are processed
+
+Kuadrant uses the industry-standard [Envoy External Authorization](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter) protocol to enforce authentication and authorization policies:
+
+1. **Request arrives**: Your Gateway (Istio, Envoy Gateway, etc.) receives an API request
+2. **Policy evaluation**: The gateway checks if any AuthPolicy matches the request based on the HTTPRoute or Gateway configuration
+3. **External authorization call**: If a policy matches, the gateway sends an authorization check request to Authorino (the external auth service)
+4. **Authentication and authorization**: Authorino evaluates your authentication rules (API key, JWT, X.509, etc.) and authorization policies
+5. **Decision returned**: Authorino responds with either `ALLOW` (request proceeds) or `DENY` (request rejected with appropriate status code)
+
+This approach provides several benefits:
+- **Zero application changes**: Authentication logic lives in policies, not in your code
+- **Consistent enforcement**: Same auth rules apply regardless of which service handles the request
+- **Defense in depth**: Some authentication methods (like X.509) validate at both the gateway (L4/TLS) and application (L7) layers
+- **Dynamic policy updates**: Change authentication requirements without redeploying services
+
+### What AuthPolicy provides
+
 A Kuadrant AuthPolicy custom resource:
 
-1. Targets Gateway API networking resources [HTTPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute) and [Gateway](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway), using these to obtain the auth context, i.e., on which traffic workload (HTTP attributes, hostnames, user attributes, etc) to enforce auth.
-2. Supports targeting subsets (sections) of a network resource to apply the auth rules to, i.e. specific listeners of a Gateway or HTTP route rules of an HTTPRoute.
-3. Abstracts the details of the underlying external authorization protocol and configuration resources, that have a much broader remit and surface area.
-4. Enables platform engineers to set defaults that govern behavior at the lower levels of the network, until a more specific policy is applied.
-5. Enables platform engineers to set overrides over policies and/or individual policy rules specified at the lower levels of the network.
+1. **Targets Gateway API resources**: Attaches to [HTTPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute) or [Gateway](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway) to define which traffic to protect
+2. **Supports fine-grained targeting**: Apply policies to specific Gateway listeners or individual HTTPRoute rules using `sectionName`
+3. **Abstracts complexity**: Simplifies Envoy External Authorization configuration while providing access to powerful authentication methods
+4. **Enables platform governance**: Platform engineers can set `defaults` to establish security baselines that apply until application teams define more specific policies
+5. **Enforces mandatory controls**: Platform engineers can set `overrides` to enforce organization-wide security requirements that cannot be weakened by route-level policies
 
-## How it works
+Check out the [API reference](../reference/authpolicy.md) for the complete AuthPolicy CRD specification.
 
-### Integration
+## Choosing the right authentication method
 
-Kuadrant integrates an [External Authorization](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter) service ("Authorino") that is triggered on matching HTTP contexts.
+When securing API access, different use cases require different authentication approaches. Choose the authentication method that best matches your security requirements, infrastructure, and user experience needs.
 
-The workflow per request goes:
+### Authentication method decision guide
 
-1. On incoming request, the gateway checks the matching rules for enforcing the auth rules, as stated in the AuthPolicy custom resources and targeted Gateway API networking objects
-2. If the request matches, the gateway sends a [CheckRequest](https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/auth/v3/external_auth.proto#envoy-v3-api-msg-service-auth-v3-checkrequest) to Authorino.
-3. The external auth service responds with a [CheckResponse](https://www.envoyproxy.io/docs/envoy/latest/api-v3/service/auth/v3/external_auth.proto#service-auth-v3-checkresponse) back to the gateway with either an `OK` or `DENIED` response code.
+| Authentication Method | When to use | Key characteristics | Learn more |
+|-----------------------|-------------|---------------------|------------|
+| **API Key** | Service-to-service communication, developer access, simple token-based auth, small-to-mid scale deployments | Simple to implement; secrets stored in Kubernetes; supports namespace-scoped or cluster-wide keys | [API Key authentication](https://docs.kuadrant.io/latest/authorino/docs/features/#api-key-authenticationapikey) |
+| **JWT / OIDC** | End-user authentication, SSO, federated identity | Industry-standard tokens; integrates with identity providers (Keycloak, Auth0, Okta); supports token validation and claims extraction | [JWT verification](https://docs.kuadrant.io/latest/authorino/docs/features/#jwt-verification-authenticationjwt) |
+| **X.509 Client Certificates** | Zero-trust architecture, cryptographic identity, compliance requirements (mTLS), machine-to-machine with PKI | Strongest authentication; defense-in-depth validation; multi-CA trust with label selectors; requires certificate infrastructure | [X.509 authentication](auth-x509.md) |
+| **OAuth2 Introspection** | Validate tokens issued by external OAuth2/OIDC servers | Delegates validation to token issuer; works with opaque tokens; real-time revocation check | [OAuth2 introspection](https://docs.kuadrant.io/latest/authorino/docs/features/#oauth-20-introspection-authenticationoauth2introspection) |
+| **Kubernetes TokenReview** | In-cluster service-to-service auth, ServiceAccount tokens | Native Kubernetes integration; validates ServiceAccount tokens; leverages existing RBAC | [Kubernetes TokenReview](https://docs.kuadrant.io/latest/authorino/docs/features/#kubernetes-tokenreview-authenticationkubernetestokenreview) |
+| **Plain Identity** | Pre-authenticated requests, custom authentication handled by upstream proxy | Identity extracted from context; authentication performed elsewhere; minimal overhead | [Plain authentication](https://docs.kuadrant.io/latest/authorino/docs/features/#plain-authenticationplain) |
+| **Anonymous Access** | Public endpoints, unauthenticated access to specific routes | No authentication required; useful with conditional policies or selective route protection | [Anonymous access](../user-guides/auth/anonymous-access.md) |
 
-An AuthPolicy and its targeted Gateway API networking resource contain all the statements to configure both the ingress gateway and the external auth service.
+### Choosing an authorization method
 
-### The AuthPolicy custom resource
+After authentication, you may need to enforce authorization rules to control what authenticated users can access:
 
-#### Overview
+| Authorization Method | When to use | Key characteristics | Learn more |
+|---------------------|-------------|---------------------|------------|
+| **Pattern Matching** | Simple attribute-based rules, checking claims or metadata values | CEL expressions; fast evaluation; good for straightforward conditions | [Pattern-matching authorization](https://docs.kuadrant.io/latest/authorino/docs/features/#pattern-matching-authorization-authorizationpatternmatching) |
+| **OPA (Open Policy Agent)** | Complex authorization logic, business rules, policy-as-code | Rego policy language; centralized policy management; supports sophisticated evaluation | [OPA authorization](https://docs.kuadrant.io/latest/authorino/docs/features/#open-policy-agent-opa-rego-policies-authorizationopa) |
+| **Kubernetes SubjectAccessReview** | Leverage Kubernetes RBAC, in-cluster authorization | Native K8s integration; uses existing Roles and RoleBindings; consistent with cluster permissions | [Kubernetes SubjectAccessReview](https://docs.kuadrant.io/latest/authorino/docs/features/#kubernetes-subjectaccessreview-authorizationkubernetessubjectaccessreview) |
+| **SpiceDB** | Fine-grained permissions, relationship-based access control | External Authzed/SpiceDB server; scales to complex permission models; Google Zanzibar-inspired | [SpiceDB authorization](https://docs.kuadrant.io/latest/authorino/docs/features/#spicedb-authorizationspicedb) |
 
-The `AuthPolicy` spec includes the following parts:
+## X.509 client certificate authentication
 
-- A reference to an existing Gateway API resource (`spec.targetRef`)
-- Authentication/authorization scheme (`spec.rules`)
-- Top-level additional conditions (`spec.when`)
-- List of named patterns (`spec.patterns`)
+For cryptographic identity verification using X.509 client certificates with mTLS, see the dedicated [X.509 Client Certificate Authentication overview](auth-x509.md). This authentication method is ideal for zero-trust architectures, compliance requirements, and machine-to-machine communication with PKI.
 
-The auth scheme specify rules for:
+The X.509 overview covers:
+- Configuration tiers (Gateway API v1.5+, provider-specific resources, header-only)
+- Defense-in-depth security model with L4 and L7 validation
+- Multi-CA trust with label selectors
+- Certificate requirements and constraints
+- Security considerations and best practices
+- Troubleshooting guide
 
-- Authentication (`spec.rules.authentication`)
-- External auth metadata fetching (`spec.rules.metadata`)
-- Authorization (`spec.rules.authorization`)
-- Custom response items (`spec.rules.response`)
-- Callbacks (`spec.rules.callbacks`)
 
-Each auth rule can declare specific `when` conditions for the rule to apply.
+## Apply consistent security policies across your API infrastructure
 
-The auth scheme (`rules`), as well as conditions and named patterns can be declared at the top-level level of the spec (with the semantics of _defaults_) or alternatively within explicit `defaults` or `overrides` blocks.
+When managing multiple APIs, routes, and gateways, you need flexible policy targeting that balances developer autonomy with platform governance. AuthPolicy provides multiple targeting options to match your organizational structure and security requirements.
 
-Check out the [API reference](../reference/authpolicy.md) for a full specification of the AuthPolicy CRD.
+### Protect specific routes with HTTPRoute-targeted policies
 
-## Using the AuthPolicy
+**Use HTTPRoute-targeted policies when:** Application teams own their routes and need to define authentication/authorization appropriate for their specific API endpoints.
 
-### Targeting a HTTPRoute networking resource
+An AuthPolicy targeting an HTTPRoute can protect:
+- **All traffic** for the entire route, or
+- **Specific rules** within the route by using `sectionName` to target individual HTTPRouteRules
 
-When targeting a HTTPRoute, an AuthPolicy can be enforced on:
-- all traffic routed by any rule specified in the HTTPRoute; or
-- only traffic routed by a specific set of rules as stated in a selected HTTPRouteRule of the HTTPRoute, by specifying the `sectionName` field in the target reference (`spec.targetRef`) of the policy.
+The policy applies to all hostnames and gateways referenced by the HTTPRoute. Use top-level `when` conditions (`spec.rules.when`) for additional filtering based on request attributes.
 
-Either way, the policy applies across all hostnames (`spec.hostnames`) and Gateways (`spec.parentRefs`) referenced in the HTTPRoute, provided the route is properly attached to the corresponding Gateway listeners.
-
-Additional filters for applying the policy can be set by specifying top-level conditions in the policy (`spec.rules.when`).
-
-**Example 1** - Targeting an entire HTTPRoute
+**Example - Protect an entire HTTPRoute:**
 
 ```yaml
 apiVersion: kuadrant.io/v1
@@ -84,7 +127,8 @@ spec:
 │                     │            │  └────────────┘     │
 │                     │            │        ▲            │
 │                     │            │        │            │
-│                     │            │        │ targetRef  │
+│                     │            │        │ targetRef: │
+│                     │            │        │ - my-route │
 │                     │            │        │            │
 │                     │            │  ┌─────┴──────┐     │
 │                     │            │  │ AuthPolicy │     │
@@ -93,7 +137,7 @@ spec:
 └─────────────────────┘            └─────────────────────┘
 ```
 
-**Example 2** - Targeting a specific set of rules of a HTTPRoute
+**Example - Protect only specific rules within a HTTPRoute:**
 
 ```yaml
 apiVersion: kuadrant.io/v1
@@ -122,7 +166,8 @@ spec:
 │                     │            │  └────────────┘      │
 │                     │            │        ▲             │
 │                     │            │        │             │
-│                     │            │        │ targetRef   │
+│                     │            │        │ targetRef:  │
+│                     │            │        │ - rule-2    │
 │                     │            │        │             │
 │                     │            │  ┌─────┴───────────┐ │
 │                     │            │  │   AuthPolicy    │ │
@@ -131,11 +176,18 @@ spec:
 └─────────────────────┘            └──────────────────────┘
 ```
 
-### Targeting a Gateway networking resource
+### Establish platform-wide security baselines with Gateway-targeted policies
 
-An AuthPolicy that targets a Gateway, without overrides, will be enforced to all HTTP traffic hitting the gateway, unless a more specific AuthPolicy targeting a matching HTTPRoute exists. Any new HTTPRoute referrencing the gateway as parent will be automatically covered by the gateway-targeting AuthPolicy, as well as changes in the existing HTTPRoutes.
+**Use Gateway-targeted policies when:** Platform engineers need to enforce organization-wide security requirements, establish default authentication for all routes, or ensure no route can be deployed without minimum security controls.
 
-Target a Gateway HTTPRoute by setting the `spec.targetRef` field of the AuthPolicy as follows:
+An AuthPolicy targeting a Gateway automatically applies to all routes attached to that gateway, including routes created after the policy. More specific HTTPRoute-targeted policies can override gateway defaults (unless you use `overrides` instead of `defaults`).
+
+Key behaviors:
+- **Automatic coverage**: New HTTPRoutes attached to the gateway are automatically protected
+- **Defaults allow specificity**: HTTPRoute policies override gateway defaults, enabling application teams to customize authentication
+- **Overrides enforce mandates**: Gateway overrides cannot be weakened by route-level policies, ensuring compliance requirements
+
+**Example - Establish default authentication for all routes:**
 
 ```yaml
 apiVersion: kuadrant.io/v1
@@ -157,11 +209,12 @@ spec:
 │                   │             │                      │
 │  ┌─────────┐      │  parentRefs │  ┌───────────┐       │
 │  │ Gateway │◄─────┼─────────────┼──┤ HTTPRoute │       │
-│  | (my-gw) |      │             │  └───────────┘       │
-│  └─────────┘      │             │        ▲             │
-│       ▲           │             │        |             │
+│  | (my-gw) |      │             │  | (my-route)│       │
+│  └─────────┘      │             │  └───────────┘       │
+│       ▲           │             │        ▲             │
 │       │           │             │        │             │
-│       │ targetRef │             │        │ targetRef   │
+│       │ targetRef:│             │        │ targetRef:  │
+│       │ - my-gw   │             │        │ - my-route  │
 │       │           │             │        │             │
 │ ┌─────┴────────┐  │             │  ┌─────┴───────────┐ │
 │ │  AuthPolicy  │  │             │  │   AuthPolicy    │ │
@@ -170,68 +223,155 @@ spec:
 └───────────────────┘             └──────────────────────┘
 ```
 
-### Defaults and Overrides
+### Balance platform governance with application flexibility using Defaults and Overrides
 
-Kuadrant AuthPolicies support Defaults & Overrides essentially as specified in Gateway API [GEP-2649](https://gateway-api.sigs.k8s.io/geps/gep-2649/).
+When managing security across multiple teams and services, you need to balance two goals: establishing organization-wide security baselines while giving application teams the flexibility to customize authentication for their specific needs.
 
-An AuthPolicy can declare a block of _defaults_ (`spec.defaults`) or a block of _overrides_ (`spec.overrides`). By default, policies that do not specify neither `defaults` nor `overrides`, act implicitly as if specifying `defaults`. A default set of policy rules are enforced until a more specific set supersedes them. In contrast, a set of overrides wins over any more specific set of rules.
+AuthPolicy provides two mechanisms based on Gateway API [GEP-713](https://gateway-api.sigs.k8s.io/geps/gep-713/):
 
-Setting _default_ AuthPolicies provide, e.g., platform engineers with the ability to protect the infrastructure against unplanned and malicious network traffic attempt, such as by setting preemptive "deny-all" policies at the level of the gateways that block access on all routes attached to the gateway. Later on, application developers can define more specific auth rules at the level of the HTTPRoutes, opening access to individual routes.
+| Use | When | Example scenario |
+|-----|------|------------------|
+| **Defaults** (`spec.defaults`) | You want to establish security baselines that application teams can customize or override | Platform team sets API key authentication at the Gateway; app teams can override with JWT for specific routes |
+| **Overrides** (`spec.overrides`) | You need to enforce mandatory security requirements that cannot be weakened | Security compliance requires all production traffic to use mTLS; override ensures no route can bypass this requirement |
 
-Inversely, a gateway policy that specify _overrides_ declares a set of rules that is enforced on all routes attached to the gateway, thus atomically replacing any more specific policy occasionally attached to any of those routes.
+**How defaults work:**
+- Policies without explicit `defaults` or `overrides` blocks behave as defaults
+- Default rules apply until a more specific policy supersedes them
+- Application teams can replace defaults with route-specific policies
+- Enables a "secure by default, customize as needed" approach
 
-Although typical examples involve specifying `defaults` and `overrides` at the level of the Gateway object which interact with sets of policy rules defined at the more specific context (HTTPRoute), Defaults & Overrides are actually transversal to object kinds. One can define AuthPolicies with `defaults` or `overrides` at any level of the following hierarchy and including multiple policies at the same level:
-1. Gateway
-2. Gateway listener (by targeting a Gateway with `sectionName`)
+**Example use case for defaults:** Set a "deny-all" policy at the Gateway to protect against unintentional exposure. Application teams then define specific authentication rules for their routes, effectively opening controlled access.
+
+**How overrides work:**
+- Override rules win over any more specific policies
+- Enforces mandatory controls that cannot be weakened by route-level policies
+- Ensures organization-wide compliance requirements are always met
+
+**Example use case for overrides:** Enforce mutual TLS for all production traffic regardless of what application teams configure, ensuring compliance with security standards.
+
+**Policy hierarchy:**
+
+Defaults and overrides work at any level of the Gateway API hierarchy:
+1. Gateway (broadest)
+2. Gateway listener (via `sectionName`)
 3. HTTPRoute
-4. HTTPRouteRule (by targeting a HTTPRoute with `sectionName`)
+4. HTTPRouteRule (via `sectionName`) (most specific)
 
-The final set of policy rules to enforce for a given request, known as "effective policy", is computed based on the basic principles stated in the [Hierarchy](https://gateway-api.sigs.k8s.io/geps/gep-2649/#hierarchy) section of GEP-2649 and [Conflict Resolution](https://gateway-api.sigs.k8s.io/geps/gep-2649/#conflict-resolution) of its predecessor [GEP-713](https://gateway-api.sigs.k8s.io/geps/gep-713/#conflict-resolution), for the hierarchical levels above.
+The "effective policy" for each request is computed based on hierarchy rules from [GEP-713](https://gateway-api.sigs.k8s.io/geps/gep-713/#resolving-conflicts). Kuadrant implements 4 [merge strategies](https://gateway-api.sigs.k8s.io/geps/gep-713/#designing-a-merge-strategy) allowing atomic or merged composition of policy rules:
+- **Atomic defaults:** The most specific policy fully replaces less specific ones for the topological scope it applies to. No merging of rules occurs. This is the default behavior.
+- **Atomic overrides:** The broadest policy fully replaces more specific ones. No merging of rules occurs.
+- **Merged defaults:** Individual rules from the most specific policy replaces rules with the same name in less specific ones, while rules with different names are both maintained.
+- **Merged overrides:** Individual rules from the broadest policy replaces rules with the same name in more specific ones, while rules with different names are both maintained.
 
-Kuadrant AuthPolicies extend Gateway API's Defaults & Overrides with additional merge strategies for allowing users to specify sets of policy rules under `defaults` and/or `overrides` blocks that can be either _atomically_ applied or _merged_ into a composition of policy rules from the multiple AuthPolicies affecting a hierarchy of newtworking objects. The name of the policy rule is used for detecting conflicts.
+### Understand how policies apply to wildcard hostnames
 
-For details of the behavior of Defaults & Overrides for the AuthPolicies covering all supported merge strategies, see [RFC-0009](https://github.com/Kuadrant/architecture/blob/main/rfcs/0009-defaults-and-overrides.md).
+When you define routes with wildcard hostnames (e.g., `*.example.com`) alongside specific hostnames (e.g., `api.example.com`), you may wonder which AuthPolicy takes precedence.
 
-### Hostnames and wildcards
+**Principle: "Most specific wins"**
 
-If an AuthPolicy targets a route defined for a hostname wildcard `*.com` and a second AuthPolicy targets another route for a hostname `api.com`, without any overrides nor merges in place, the policies will be enforced according to the principle of "the more specific wins". E.g., a request coming for `api.com` will be protected according to the rules from the AuthPolicy that targets the route for `api.com`, while a request for `other.com` will be protected with the rules from the AuthPolicy targeting the route for `*.com`. One should not expect both set of policy rules to be enforced on requests to `api.com` simply because both hostname and wildcard match.
+Without overrides in place, the AuthPolicy targeting the most specific matching route applies. Policies don't combine—only one policy's rules are enforced per request.
 
-Example with 3 AuthPolicies and 3 HTTPRoutes, without merges nor overrides in place:
-
+**Example scenario:**
 - AuthPolicy A → HTTPRoute A (`a.toystore.com`)
 - AuthPolicy B → HTTPRoute B (`b.toystore.com`)
 - AuthPolicy W → HTTPRoute W (`*.toystore.com`)
 
-Expected behavior:
+**Request behavior:**
+- Request to `a.toystore.com` → AuthPolicy A applies (specific hostname wins)
+- Request to `b.toystore.com` → AuthPolicy B applies (specific hostname wins)
+- Request to `other.toystore.com` → AuthPolicy W applies (wildcard catches unmatched)
 
-- Request to `a.toystore.com` → AuthPolicy A will be enforced
-- Request to `b.toystore.com` → AuthPolicy B will be enforced
-- Request to `other.toystore.com` → AuthPolicy W will be enforced
+This allows you to set broad defaults with wildcards while overriding authentication for specific subdomains.
 
-### `when` conditions
+### Apply policies conditionally based on request attributes with `when` conditions
 
-`when` conditions can be used to scope an AuthPolicy or auth rule within an AuthPolicy (i.e. to filter the traffic to which a policy or policy rule applies) without any coupling to the underlying network topology.
+**Use `when` conditions when:** You need to activate authentication based on request attributes that can't be expressed in HTTPRoute matching rules, such as source IP ranges, identity-based attributes, resource attributes, custom metadata, or time-based conditions.
 
-Use `when` conditions to conditionally activate policies and policy rules based on attributes that cannot be expressed in the HTTPRoutes' `spec.hostnames` and `spec.rules.matches` fields, or in general in AuthPolicies that target a Gateway.
+Common use cases:
+- Apply different authentication to requests from internal vs. external IP ranges
+- Enable authentication only during specific time windows
+- Apply policies based on JWT claims or other dynamic attributes
 
-`when` conditions in an AuthPolicy are compatible with Authorino [conditions](https://docs.kuadrant.io/latest/authorino/docs/features/#common-feature-conditions-when), thus supporting complex boolean expressions with AND and OR operators, as well as grouping.
+`when` conditions support complex boolean expressions with AND/OR operators and grouping, compatible with Authorino [conditions](https://docs.kuadrant.io/latest/authorino/docs/features/#common-feature-conditions-when).
 
-The selectors within the `when` conditions of an AuthPolicy are a subset of Kuadrant's Well-known Attributes ([RFC 0002](https://github.com/Kuadrant/architecture/blob/main/rfcs/0002-well-known-attributes.md)). Check out the reference for the full list of supported selectors.
+**Example - Apply different authentication based on source IP (internal vs. external traffic):**
 
-Authorino [JSON path string modifiers](https://docs.kuadrant.io/latest/authorino/docs/features/#string-modifiers) can also be applied to the selectors within the `when` conditions of an AuthPolicy.
+```yaml
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: network-based-auth
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: my-api
+  rules:
+    authentication:
+      # Allow anonymous access from internal networks
+      "internal-anonymous":
+        anonymous: {}
+        when:
+        - predicate: "source.address.matches('10\\..*|172\\.(1[6-9]|2[0-9]|3[01])\\..*|192\\.168\\..*')"
 
-## Egress
+      # Require strong authentication from external networks
+      "external-mtls":
+        x509:
+          selector:
+            matchLabels:
+              tier: production
+        when:
+        # Activate when source is NOT in private IP ranges
+        - predicate: "!source.address.matches('10\\..*|172\\.(1[6-9]|2[0-9]|3[01])\\..*|192\\.168\\..*')"
+```
 
-AuthPolicy works on egress gateways with the same attachment model described above. On egress, the primary use case is **credential injection** — i.e., authenticating workloads using a common authentication mechanism at the gateway (e.g. Kubernetes service account tokens) and injecting specific external API credentials (e.g. API key fetched from Vault) into the outbound requests, typically replacing the `Authorization` header.
+This example shows a scenario that cannot be achieved with HTTPRoute matching alone—HTTPRoute has no support for source IP-based routing or matching.
 
-The Gateway resource and policy attachment model are identical between ingress and egress — the Kuadrant operator does not distinguish between them. See the [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md) guide for a full walkthrough.
+Conditions implement Kuadrant's [Well-known Attributes](https://github.com/Kuadrant/architecture/blob/main/rfcs/0002-well-known-attributes.md). You can use [Common Expression Language (CEL)](https://cel.dev/) predicates or [JSON path selector modifiers](https://docs.kuadrant.io/latest/authorino/docs/features/#string-modifiers) for advanced conditions.
 
-## Examples
+## Secure outbound API calls with credential injection at egress gateways
 
-Check out the following user guides for examples of protecting services with Kuadrant:
+When your services call external APIs that require authentication, you need to centrally manage external credentials at the egress gateway rather than distributing secrets to every pod. This approach maintains security, simplifies credential rotation, and provides centralized audit logging for external API access.
 
-- [Enforcing authentication & authorization with Kuadrant AuthPolicy, for app developers and platform engineers](../user-guides/auth/auth-for-app-devs-and-platform-engineers.md)
-- [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md)
+### How egress credential injection works
+
+**Use egress credential injection when:**
+- Services need to call external APIs (payment processors, cloud providers, SaaS platforms)
+- External APIs require authentication (API keys, OAuth tokens, custom headers)
+- You want to avoid distributing external API credentials to every pod
+- You need centralized credential management and rotation
+- You want to authenticate internal workloads before allowing external API access
+
+**The credential injection pattern:**
+
+1. **Authenticate internal workload**: Gateway authenticates the workload making the outbound request using internal mechanisms (Kubernetes ServiceAccount tokens, JWT, API keys)
+2. **Fetch external credentials**: Gateway retrieves external API credentials from secure storage (Kubernetes Secrets, Vault, external metadata sources)
+3. **Inject credentials**: Gateway replaces or adds authentication headers in the outbound request with external API credentials
+4. **Forward request**: Request proceeds to the external API with proper authentication
+
+
+**Key characteristics:**
+- **Same attachment model**: AuthPolicy attaches to egress Gateways and HTTPRoutes identically to ingress—Kuadrant doesn't distinguish between ingress and egress
+- **Centralized secret management**: External credentials stored in one location, not distributed to pods
+- **Credential rotation**: Update credentials at the gateway without redeploying workloads
+- **Audit trail**: All external API access logged at the gateway
+- **Defense in depth**: Authenticate internal workloads before allowing external API access
+
+See the [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md) user guide for a complete walkthrough including HTTPRoute configuration for external services.
+
+## Examples and user guides
+
+Explore these user guides for complete examples of protecting services with Kuadrant AuthPolicy:
+
+### Authentication examples
+- [X.509 Client Certificate Authentication](../user-guides/auth/x509-client-certificate-authentication.md) - Defense-in-depth mTLS with Gateway API v1.5 frontend TLS validation
+- [Anonymous Access](../user-guides/auth/anonymous-access.md) - Selectively allow unauthenticated access to specific routes
+- [Enforcing authentication & authorization with Kuadrant AuthPolicy, for app developers and platform engineers](../user-guides/auth/auth-for-app-devs-and-platform-engineers.md) - API key authentication with platform governance
+
+### Egress gateway examples
+- [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md) - Centralized credential management for outbound API calls
+
+### Authentication with rate limiting
 - [Authenticated Rate Limiting for Application Developers](../user-guides/ratelimiting/authenticated-rl-for-app-developers.md)
 - [Authenticated Rate Limiting with JWTs and Kubernetes RBAC](../user-guides/ratelimiting/authenticated-rl-with-jwt-and-k8s-authnz.md)
 
