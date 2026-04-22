@@ -65,37 +65,40 @@ func (r *MutatorRegistry) RegisterWasmConfigMutator(mutator WasmConfigMutator) {
 }
 
 func (r *MutatorRegistry) ApplyAuthConfigMutators(authConfig *authorinov1beta3.AuthConfig, path []machinery.Targetable) error {
-	_, gateway, _, httpRoute, _, err := kuadrantmachinery.ObjectsInRequestPath(path)
+	parsed, err := kuadrantmachinery.ParseTopologyPath(path)
 	if err != nil {
 		return err
 	}
 
+	var routeKind string
+	switch parsed.RouteType {
+	case kuadrantmachinery.RouteTypeHTTP:
+		routeKind = "HTTPRoute"
+	case kuadrantmachinery.RouteTypeGRPC:
+		routeKind = "GRPCRoute"
+	default:
+		return fmt.Errorf("unsupported route type: %s", parsed.RouteType)
+	}
+
 	targetRefs := []machinery.PolicyTargetReference{
-		// HTTPRoute - for extension policies targeting this specific route
-		machinery.LocalPolicyTargetReferenceWithSectionName{
-			LocalPolicyTargetReferenceWithSectionName: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
-				LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
-					Group: gatewayapiv1alpha2.Group("gateway.networking.k8s.io"),
-					Kind:  gatewayapiv1alpha2.Kind("HTTPRoute"),
-					Name:  gatewayapiv1alpha2.ObjectName(httpRoute.GetName()),
-				},
-			},
-			PolicyNamespace: httpRoute.GetNamespace(),
-		},
-		// Gateway - for extension policies targeting the parent gateway
-		machinery.LocalPolicyTargetReferenceWithSectionName{
-			LocalPolicyTargetReferenceWithSectionName: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
-				LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
-					Group: gatewayapiv1alpha2.Group("gateway.networking.k8s.io"),
-					Kind:  gatewayapiv1alpha2.Kind("Gateway"),
-					Name:  gatewayapiv1alpha2.ObjectName(gateway.GetName()),
-				},
-			},
-			PolicyNamespace: gateway.GetNamespace(),
-		},
+		policyTargetRef("Gateway", parsed.Gateway.GetName(), parsed.Gateway.GetNamespace()),
+		policyTargetRef(routeKind, parsed.GetRouteName(), parsed.GetRouteNamespace()),
 	}
 
 	return r.applyMutatorsWithTargetRefs(authConfig, targetRefs)
+}
+
+func policyTargetRef(kind, name, namespace string) machinery.PolicyTargetReference {
+	return machinery.LocalPolicyTargetReferenceWithSectionName{
+		LocalPolicyTargetReferenceWithSectionName: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+			LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+				Group: gatewayapiv1alpha2.Group("gateway.networking.k8s.io"),
+				Kind:  gatewayapiv1alpha2.Kind(kind),
+				Name:  gatewayapiv1alpha2.ObjectName(name),
+			},
+		},
+		PolicyNamespace: namespace,
+	}
 }
 
 func (r *MutatorRegistry) applyMutatorsWithTargetRefs(authConfig *authorinov1beta3.AuthConfig, targetRefs []machinery.PolicyTargetReference) error {
@@ -111,18 +114,8 @@ func (r *MutatorRegistry) applyMutatorsWithTargetRefs(authConfig *authorinov1bet
 }
 
 func (r *MutatorRegistry) ApplyWasmConfigMutators(wasmConfig *wasm.Config, gateway *machinery.Gateway) error {
-	// Create target ref for the gateway
 	targetRefs := []machinery.PolicyTargetReference{
-		machinery.LocalPolicyTargetReferenceWithSectionName{
-			LocalPolicyTargetReferenceWithSectionName: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
-				LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
-					Group: gatewayapiv1alpha2.Group("gateway.networking.k8s.io"),
-					Kind:  gatewayapiv1alpha2.Kind("Gateway"),
-					Name:  gatewayapiv1alpha2.ObjectName(gateway.GetName()),
-				},
-			},
-			PolicyNamespace: gateway.GetNamespace(),
-		},
+		policyTargetRef("Gateway", gateway.GetName(), gateway.GetNamespace()),
 	}
 
 	r.mutex.RLock()
@@ -655,31 +648,38 @@ func HashUpstreamServiceConfig(svc wasm.Service) string {
 	return fmt.Sprintf("%x", h[:8])
 }
 
-// CollectHTTPRouteUpstreams traverses the topology from a gateway through its listeners
-// to find all attached HTTPRoutes, then returns registered upstreams for those routes.
-// Routes are deduplicated by namespace/name to avoid duplicate entries when a route
-// appears under multiple listeners.
-func CollectHTTPRouteUpstreams(topology *machinery.Topology, gateway *machinery.Gateway) []RegisteredUpstreamEntry {
+// CollectRouteUpstreams traverses the topology from a gateway through its listeners
+// to find all attached routes (HTTPRoute and GRPCRoute), then returns registered
+// upstreams for those routes. Routes are deduplicated by kind/namespace/name to avoid
+// duplicate entries when a route appears under multiple listeners.
+func CollectRouteUpstreams(topology *machinery.Topology, gateway *machinery.Gateway) []RegisteredUpstreamEntry {
 	var result []RegisteredUpstreamEntry
 	seen := make(map[string]bool)
 
 	for _, child := range topology.Targetables().Children(gateway) {
 		for _, grandchild := range topology.Targetables().Children(child) {
-			if httpRoute, ok := grandchild.(*machinery.HTTPRoute); ok {
-				routeKey := httpRoute.GetNamespace() + "/" + httpRoute.GetName()
-				if seen[routeKey] {
-					continue
-				}
-				seen[routeKey] = true
-
-				routeUpstreams := GetRegisteredUpstreamsByTargetRef(TargetRef{
-					Group:     "gateway.networking.k8s.io",
-					Kind:      "HTTPRoute",
-					Name:      httpRoute.GetName(),
-					Namespace: httpRoute.GetNamespace(),
-				})
-				result = append(result, routeUpstreams...)
+			var kind, name, namespace string
+			switch route := grandchild.(type) {
+			case *machinery.HTTPRoute:
+				kind, name, namespace = "HTTPRoute", route.GetName(), route.GetNamespace()
+			case *machinery.GRPCRoute:
+				kind, name, namespace = "GRPCRoute", route.GetName(), route.GetNamespace()
+			default:
+				continue
 			}
+
+			routeKey := kind + "/" + namespace + "/" + name
+			if seen[routeKey] {
+				continue
+			}
+			seen[routeKey] = true
+
+			result = append(result, GetRegisteredUpstreamsByTargetRef(TargetRef{
+				Group:     "gateway.networking.k8s.io",
+				Kind:      kind,
+				Name:      name,
+				Namespace: namespace,
+			})...)
 		}
 	}
 	return result

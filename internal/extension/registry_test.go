@@ -10,13 +10,16 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types/ref"
 	authorinov1beta3 "github.com/kuadrant/authorino/api/v1beta3"
+	"github.com/samber/lo"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"k8s.io/utils/ptr"
+	gwapiv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 
 	"github.com/kuadrant/kuadrant-operator/internal/wasm"
 	extpb "github.com/kuadrant/kuadrant-operator/pkg/extension/grpc/v1"
 	"github.com/kuadrant/policy-machinery/machinery"
-	gatewayapiv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 func testResourceID(kind, namespace, name string) ResourceID {
@@ -871,6 +874,60 @@ func TestRegisteredDataMutatorLookup(t *testing.T) {
 			t.Error("Expected 'global' property from Gateway-level policy")
 		}
 	})
+
+	t.Run("mutator lookup with GRPCRoute and Gateway", func(t *testing.T) {
+		store := NewRegisteredDataStore()
+		mutator := NewRegisteredDataMutator[*authorinov1beta3.AuthConfig](store)
+
+		grpcRouteEntry := DataProviderEntry{
+			Policy:     testResourceID("PlanPolicy", "ns1", "plan1"),
+			Binding:    "plan",
+			Expression: `"premium"`,
+			CAst:       nil,
+		}
+		grpcRouteTargetRef := createMockGRPCRouteTargetRef()
+		store.Set(grpcRouteEntry.Policy, grpcRouteTargetRef.GetLocator(), extpb.Domain_DOMAIN_AUTH, "plan", grpcRouteEntry)
+
+		gatewayEntry := DataProviderEntry{
+			Policy:     testResourceID("GlobalPolicy", "ns1", "global1"),
+			Binding:    "global",
+			Expression: `"enterprise"`,
+			CAst:       nil,
+		}
+		gatewayTargetRef := createMockGatewayTargetRef()
+		store.Set(gatewayEntry.Policy, gatewayTargetRef.GetLocator(), extpb.Domain_DOMAIN_AUTH, "global", gatewayEntry)
+
+		authConfig := &authorinov1beta3.AuthConfig{}
+		targetRefs := []machinery.PolicyTargetReference{
+			grpcRouteTargetRef,
+			gatewayTargetRef,
+		}
+
+		err := mutator.Mutate(authConfig, targetRefs)
+		if err != nil {
+			t.Errorf("Expected no error with mutator lookup: %v", err)
+		}
+
+		if authConfig.Spec.Response == nil {
+			t.Error("Expected response spec to be set")
+		}
+		if authConfig.Spec.Response.Success.DynamicMetadata == nil {
+			t.Error("Expected dynamic metadata to be set")
+		}
+		kuadrantData, exists := authConfig.Spec.Response.Success.DynamicMetadata[KuadrantDataNamespace]
+		if !exists {
+			t.Error("Expected kuadrant data namespace to exist")
+		}
+		if kuadrantData.Json == nil || kuadrantData.Json.Properties == nil {
+			t.Error("Expected JSON properties to be set")
+		}
+		if _, exists := kuadrantData.Json.Properties["plan"]; !exists {
+			t.Error("Expected 'plan' property from GRPCRoute-level policy")
+		}
+		if _, exists := kuadrantData.Json.Properties["global"]; !exists {
+			t.Error("Expected 'global' property from Gateway-level policy")
+		}
+	})
 }
 
 // Mock mutator
@@ -902,6 +959,19 @@ func createMockHTTPRouteTargetRef() machinery.PolicyTargetReference {
 				Group: "gateway.networking.k8s.io",
 				Kind:  "HTTPRoute",
 				Name:  "test-route",
+			},
+		},
+		PolicyNamespace: "test-namespace",
+	}
+}
+
+func createMockGRPCRouteTargetRef() machinery.PolicyTargetReference {
+	return machinery.LocalPolicyTargetReferenceWithSectionName{
+		LocalPolicyTargetReferenceWithSectionName: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+			LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+				Group: "gateway.networking.k8s.io",
+				Kind:  "GRPCRoute",
+				Name:  "test-grpc-route",
 			},
 		},
 		PolicyNamespace: "test-namespace",
@@ -1402,5 +1472,275 @@ func TestMutateWasmConfig_DeduplicatesIdenticalUpstreams(t *testing.T) {
 	// Same service config → same hash key → deduplicated to 1
 	if len(wasmConfig.Services) != 1 {
 		t.Errorf("Expected 1 deduplicated service, got %d", len(wasmConfig.Services))
+	}
+}
+
+func TestCollectRouteUpstreams(t *testing.T) {
+	// Build a topology with listeners between gateways and routes (matching real operator topology)
+	buildTopology := func(gateways []*gwapiv1.Gateway, httpRoutes []*gwapiv1.HTTPRoute, grpcRoutes []*gwapiv1.GRPCRoute) *machinery.Topology {
+		mGateways := lo.Map(gateways, func(g *gwapiv1.Gateway, _ int) *machinery.Gateway {
+			return &machinery.Gateway{Gateway: g}
+		})
+		listeners := lo.FlatMap(mGateways, machinery.ListenersFromGatewayFunc)
+		mHTTPRoutes := lo.Map(httpRoutes, func(r *gwapiv1.HTTPRoute, _ int) *machinery.HTTPRoute {
+			return &machinery.HTTPRoute{HTTPRoute: r}
+		})
+		mGRPCRoutes := lo.Map(grpcRoutes, func(r *gwapiv1.GRPCRoute, _ int) *machinery.GRPCRoute {
+			return &machinery.GRPCRoute{GRPCRoute: r}
+		})
+
+		topology, err := machinery.NewTopology(
+			machinery.WithTargetables(mGateways...),
+			machinery.WithTargetables(listeners...),
+			machinery.WithTargetables(mHTTPRoutes...),
+			machinery.WithTargetables(mGRPCRoutes...),
+			machinery.WithLinks(
+				machinery.LinkGatewayToListenerFunc(),
+				machinery.LinkListenerToHTTPRouteFunc(mGateways, listeners),
+				machinery.LinkListenerToGRPCRouteFunc(mGateways, listeners),
+			),
+		)
+		if err != nil {
+			t.Fatalf("Failed to build topology: %v", err)
+		}
+		return topology
+	}
+
+	// Helper to find a gateway in the topology
+	findGateway := func(topology *machinery.Topology, name string) *machinery.Gateway {
+		for _, obj := range topology.Targetables().Items() {
+			if gw, ok := obj.(*machinery.Gateway); ok && gw.GetName() == name {
+				return gw
+			}
+		}
+		t.Fatalf("Gateway %s not found in topology", name)
+		return nil
+	}
+
+	tests := []struct {
+		name          string
+		gateways      []*gwapiv1.Gateway
+		httpRoutes    []*gwapiv1.HTTPRoute
+		grpcRoutes    []*gwapiv1.GRPCRoute
+		upstreams     map[TargetRef]RegisteredUpstreamEntry
+		gatewayName   string
+		expectedCount int
+		expectedNames []string
+	}{
+		{
+			name: "collects HTTPRoute upstreams",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+			},
+			httpRoutes: []*gwapiv1.HTTPRoute{
+				BuildHTTPRoute(func(r *gwapiv1.HTTPRoute) {
+					r.Name = "http-route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "http-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-http-svc", Host: "svc1", Port: 8081,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 1,
+			expectedNames: []string{"ext-http-svc"},
+		},
+		{
+			name: "collects GRPCRoute upstreams",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+			},
+			grpcRoutes: []*gwapiv1.GRPCRoute{
+				BuildGRPCRoute(func(r *gwapiv1.GRPCRoute) {
+					r.Name = "grpc-route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "GRPCRoute", Name: "grpc-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-grpc-svc", Host: "svc2", Port: 8082,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 1,
+			expectedNames: []string{"ext-grpc-svc"},
+		},
+		{
+			name: "collects both HTTPRoute and GRPCRoute upstreams",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+			},
+			httpRoutes: []*gwapiv1.HTTPRoute{
+				BuildHTTPRoute(func(r *gwapiv1.HTTPRoute) {
+					r.Name = "http-route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			grpcRoutes: []*gwapiv1.GRPCRoute{
+				BuildGRPCRoute(func(r *gwapiv1.GRPCRoute) {
+					r.Name = "grpc-route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "http-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-http-svc", Host: "svc1", Port: 8081,
+				},
+				{Group: "gateway.networking.k8s.io", Kind: "GRPCRoute", Name: "grpc-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-grpc-svc", Host: "svc2", Port: 8082,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 2,
+			expectedNames: []string{"ext-http-svc", "ext-grpc-svc"},
+		},
+		{
+			name: "no upstreams for gateway without routes",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-2" }),
+			},
+			httpRoutes: []*gwapiv1.HTTPRoute{
+				BuildHTTPRoute(func(r *gwapiv1.HTTPRoute) {
+					r.Name = "http-route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "http-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-http-svc", Host: "svc1", Port: 8081,
+				},
+			},
+			gatewayName:   "gw-2",
+			expectedCount: 0,
+		},
+		{
+			name: "deduplicates routes on multiple listeners",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) {
+					g.Name = "gw-1"
+					g.Spec.Listeners = append(g.Spec.Listeners, gwapiv1.Listener{
+						Name:     "listener-2",
+						Port:     443,
+						Protocol: "HTTPS",
+					})
+				}),
+			},
+			httpRoutes: []*gwapiv1.HTTPRoute{
+				BuildHTTPRoute(func(r *gwapiv1.HTTPRoute) {
+					r.Name = "http-route-1"
+					r.Spec.ParentRefs = []gwapiv1.ParentReference{
+						{Name: "gw-1", SectionName: ptr.To(gwapiv1.SectionName("my-listener"))},
+						{Name: "gw-1", SectionName: ptr.To(gwapiv1.SectionName("listener-2"))},
+					}
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "http-route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-http-svc", Host: "svc1", Port: 8081,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 1,
+			expectedNames: []string{"ext-http-svc"},
+		},
+		{
+			name: "same-name routes of different kinds are collected separately",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+			},
+			httpRoutes: []*gwapiv1.HTTPRoute{
+				BuildHTTPRoute(func(r *gwapiv1.HTTPRoute) {
+					r.Name = "route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			grpcRoutes: []*gwapiv1.GRPCRoute{
+				BuildGRPCRoute(func(r *gwapiv1.GRPCRoute) {
+					r.Name = "route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-http-svc", Host: "svc1", Port: 8081,
+				},
+				{Group: "gateway.networking.k8s.io", Kind: "GRPCRoute", Name: "route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-grpc-svc", Host: "svc2", Port: 8082,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 2,
+			expectedNames: []string{"ext-http-svc", "ext-grpc-svc"},
+		},
+		{
+			name: "upstream with mismatched kind is not collected",
+			gateways: []*gwapiv1.Gateway{
+				BuildGateway(func(g *gwapiv1.Gateway) { g.Name = "gw-1" }),
+			},
+			grpcRoutes: []*gwapiv1.GRPCRoute{
+				BuildGRPCRoute(func(r *gwapiv1.GRPCRoute) {
+					r.Name = "route-1"
+					r.Spec.ParentRefs[0].Name = "gw-1"
+				}),
+			},
+			upstreams: map[TargetRef]RegisteredUpstreamEntry{
+				{Group: "gateway.networking.k8s.io", Kind: "HTTPRoute", Name: "route-1", Namespace: "my-namespace"}: {
+					ClusterName: "ext-wrong-kind", Host: "svc1", Port: 8081,
+				},
+			},
+			gatewayName:   "gw-1",
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore GlobalMutatorRegistry
+			originalRegistry := GlobalMutatorRegistry
+			defer func() { GlobalMutatorRegistry = originalRegistry }()
+			GlobalMutatorRegistry = &MutatorRegistry{}
+
+			// Register upstreams
+			store := NewRegisteredDataStore()
+			for targetRef, entry := range tt.upstreams {
+				entry.TargetRef = targetRef
+				store.SetUpstream(
+					RegisteredUpstreamKey{
+						Policy:  testResourceID("TestPolicy", "my-namespace", "test-policy"),
+						URL:     fmt.Sprintf("grpc://%s:%d", entry.Host, entry.Port),
+						Service: "test.Service",
+						Method:  "TestMethod",
+					},
+					entry,
+					testFileDescriptorSet(),
+				)
+			}
+			GlobalMutatorRegistry.RegisterWasmConfigMutator(NewRegisteredDataMutator[*wasm.Config](store))
+
+			topology := buildTopology(tt.gateways, tt.httpRoutes, tt.grpcRoutes)
+			gateway := findGateway(topology, tt.gatewayName)
+
+			result := CollectRouteUpstreams(topology, gateway)
+
+			if len(result) != tt.expectedCount {
+				t.Errorf("Expected %d upstreams, got %d", tt.expectedCount, len(result))
+			}
+
+			for _, expectedName := range tt.expectedNames {
+				found := false
+				for _, entry := range result {
+					if entry.ClusterName == expectedName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected upstream %s not found in results", expectedName)
+				}
+			}
+		})
 	}
 }
