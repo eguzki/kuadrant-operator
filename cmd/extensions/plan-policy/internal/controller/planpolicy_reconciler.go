@@ -26,6 +26,9 @@ import (
 
 // +kubebuilder:rbac:groups=kuadrant.io,resources=ratelimitpolicies,verbs=create;delete
 
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=grpcroutes,verbs=get;list;watch
+
 type PlanPolicyReconciler struct {
 	types.ExtensionBase
 }

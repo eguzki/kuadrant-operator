@@ -192,8 +192,8 @@ func (r *IstioExtensionReconciler) reconcileUpstreamClusters(ctx context.Context
 			Namespace: gateway.GetNamespace(),
 		})
 
-		// Also collect upstreams registered for HTTPRoutes attached to this gateway
-		gatewayUpstreams = append(gatewayUpstreams, extension.CollectHTTPRouteUpstreams(topology, gateway)...)
+		// Also collect upstreams registered for routes attached to this gateway
+		gatewayUpstreams = append(gatewayUpstreams, extension.CollectRouteUpstreams(topology, gateway)...)
 
 		if len(gatewayUpstreams) == 0 {
 			continue
