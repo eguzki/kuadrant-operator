@@ -94,7 +94,7 @@ spec:
         x509:
           # Extract certificate from XFCC header
           source:
-            xfccHeader: "x-forwarded-client-cert"
+            xfccHeader: "x-forwarded-client-cert" # cert in envoy XFCC text format, extracted from the header
           # Select trusted CA certificates using labels
           selector:
             matchLabels:
@@ -159,9 +159,9 @@ spec:
     authentication:
       "client-cert-header":
         x509:
-          # Extract from RFC 9440 Client-Cert header
+          # Extract certificate from RFC 9440 Client-Cert header
           source:
-            clientCertHeader: "client-cert"
+            clientCertHeader: "client-cert" # cert in der format, base64-encoded, extracted from the header
           selector:
             matchLabels:
               tier: trusted-upstream
@@ -184,7 +184,7 @@ The `x509.source` field specifies where to extract the client certificate from:
 ```yaml
 x509:
   source:
-    expression: 'request.http.headers["x-custom-client-cert"]'
+    expression: 'request.http.headers["x-custom-client-cert"]' # cert in pem format, URL-encoded, extracted from a custom header using CEL
   selector:
     matchLabels:
       app: my-service
@@ -240,6 +240,9 @@ kubectl label secret customer-a-ca \
   environment=production
 ```
 
+> [!IMPORTANT] Cross-namespace trust
+> By default, Authorino only trusts CA secrets in the Kuadrant namespace. To allow cross-namespace references, set `allNamespaces: true` in the AuthPolicy, but use this with caution as it expands the trust scope.
+
 ## Certificate requirements and constraints
 
 ### Required certificate attributes
@@ -279,17 +282,17 @@ Client certificates must meet these requirements for Authorino validation to suc
 
 When X.509 authentication succeeds, the identity object (`auth.identity`) contains the certificate subject fields available for use in authorization rules and response transformations:
 
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `CommonName` | string | Certificate Common Name (CN) | `"api-client.example.com"` |
-| `Country` | array of strings | Country (C) | `["US"]` |
-| `Organization` | array of strings | Organization (O) | `["ACME Corp"]` |
-| `OrganizationalUnit` | array of strings | Organizational Unit (OU) | `["Engineering", "Platform"]` |
-| `Locality` | array of strings | Locality (L) | `["San Francisco"]` |
-| `Province` | array of strings | Province/State (ST) | `["California"]` |
-| `StreetAddress` | array of strings | Street Address | `["123 Main St"]` |
-| `PostalCode` | array of strings | Postal Code | `["94105"]` |
-| `SerialNumber` | string | Certificate serial number | `"01:23:45:67:89:AB:CD:EF"` |
+| Field | Type | OID | Description | Example |
+|-------|------|-----|-------------|---------|
+| `CommonName` | string | 2.5.4.3 | Common Name (CN) | `"api-client.example.com"` |
+| `Country` | array of strings | 2.5.4.6 | Country (C) | `["US"]` |
+| `Organization` | array of strings | 2.5.4.10 | Organization (O) | `["ACME Corp"]` |
+| `OrganizationalUnit` | array of strings | 2.5.4.11 | Organizational Unit (OU) | `["Engineering", "Platform"]` |
+| `Locality` | array of strings | 2.5.4.7 | Locality (L) | `["San Francisco"]` |
+| `Province` | array of strings | 2.5.4.8 | Province/State (ST) | `["California"]` |
+| `StreetAddress` | array of strings | 2.5.4.9 | Street Address | `["123 Main St"]` |
+| `PostalCode` | array of strings | 2.5.4.17 | Postal Code | `["94105"]` |
+| `SerialNumber` | string | 2.5.4.5 | Subject serial number | `"01:23:45:67:89:AB:CD:EF"` |
 
 **Example - Use certificate attributes in authorization:**
 
@@ -380,7 +383,7 @@ Proper CA certificate management is critical for maintaining security:
 - Manage CA certificates in Kubernetes TLS secrets with appropriate labels
 - Rotation requires updating secrets (Authorino watches for changes)
 - Multi-CA trust via label selectors enables fine-grained revocation control
-- Secrets must be in the Kuadrant namespace
+- Secrets must be in the Kuadrant namespace preferably (or use `allNamespaces: true` with caution)
 
 **Key distinction:** Gateway CAs typically represent a single root CA validated at TLS handshake, while Authorino CAs can represent multiple intermediate CAs selected via labels, enabling granular trust management.
 

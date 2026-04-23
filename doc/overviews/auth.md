@@ -263,6 +263,9 @@ The "effective policy" for each request is computed based on hierarchy rules fro
 - **Merged defaults:** Individual rules from the most specific policy replaces rules with the same name in less specific ones, while rules with different names are both maintained.
 - **Merged overrides:** Individual rules from the broadest policy replaces rules with the same name in more specific ones, while rules with different names are both maintained.
 
+> [!NOTE] Learn more about Defaults & Overrides
+> For detailed behavior and examples of Defaults & Overrides used in the AuthPolicies, see [RFC-0009](https://github.com/Kuadrant/architecture/blob/main/rfcs/0009-defaults-and-overrides.md).
+
 ### Understand how policies apply to wildcard hostnames
 
 When you define routes with wildcard hostnames (e.g., `*.example.com`) alongside specific hostnames (e.g., `api.example.com`), you may wonder which AuthPolicy takes precedence.
