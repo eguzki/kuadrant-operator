@@ -33,9 +33,15 @@ verify-helm-charts: helm-build ## Verify helm charts update.
 	git diff --exit-code ./charts
 	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./charts)" ]
 
+.PHONY: verify-extensions-manifests
+verify-extensions-manifests: extensions-manifests ## Verify extension manifests update.
+	git diff --exit-code ./cmd/extensions
+	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./cmd/extensions)" ]
+
 .PHONY: verify-manifests ## Verify controller-gen, bundle and helm charts manifests.
 verify-manifests: ## Verify manifests update.
 	make verify-controller-manifests
+	make verify-extensions-manifests
 	make verify-bundle
 	make verify-helm-charts
 
