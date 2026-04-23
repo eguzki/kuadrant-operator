@@ -260,8 +260,8 @@ Defaults and overrides work at any level of the Gateway API hierarchy:
 The "effective policy" for each request is computed based on hierarchy rules from [GEP-713](https://gateway-api.sigs.k8s.io/geps/gep-713/#resolving-conflicts). Kuadrant implements 4 [merge strategies](https://gateway-api.sigs.k8s.io/geps/gep-713/#designing-a-merge-strategy) allowing atomic or merged composition of policy rules:
 - **Atomic defaults:** The most specific policy fully replaces less specific ones for the topological scope it applies to. No merging of rules occurs. This is the default behavior.
 - **Atomic overrides:** The broadest policy fully replaces more specific ones. No merging of rules occurs.
-- **Merged defaults:** Individual rules from the most specific policy replaces rules with the same name in less specific ones, while rules with different names are both maintained.
-- **Merged overrides:** Individual rules from the broadest policy replaces rules with the same name in more specific ones, while rules with different names are both maintained.
+- **Merged defaults:** Individual rules from the most specific policy replace rules with the same name in less specific ones, while rules with different names are both maintained.
+- **Merged overrides:** Individual rules from the broadest policy replace rules with the same name in more specific ones, while rules with different names are both maintained.
 
 > [!NOTE] Learn more about Defaults & Overrides
 > For detailed behavior and examples of Defaults & Overrides used in the AuthPolicies, see [RFC-0009](https://github.com/Kuadrant/architecture/blob/main/rfcs/0009-defaults-and-overrides.md).
