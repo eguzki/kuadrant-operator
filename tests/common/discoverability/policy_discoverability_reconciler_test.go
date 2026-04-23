@@ -71,11 +71,17 @@ var _ = Describe("Policy discoverability reconciler", func() {
 
 		Eventually(tests.GatewayIsReady(ctx, testClient(), gateway)).WithContext(ctx).Should(BeTrue())
 
-		// create application
+		// create HTTP route
 		route := tests.BuildBasicHttpRoute(TestHTTPRouteName, TestGatewayName, testNamespace, []string{randomHostFromGWHost()})
 		err = k8sClient.Create(ctx, route)
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(tests.RouteIsAccepted(ctx, testClient(), client.ObjectKeyFromObject(route))).WithContext(ctx).Should(BeTrue())
+
+		// create gRPC route
+		grpcRoute := tests.BuildBasicGrpcRoute(TestGRPCRouteName, TestGatewayName, testNamespace, []string{randomHostFromGWHost()})
+		err = k8sClient.Create(ctx, grpcRoute)
+		Expect(err).ToNot(HaveOccurred())
+		Eventually(tests.GRPCRouteIsAccepted(ctx, testClient(), client.ObjectKeyFromObject(grpcRoute))).WithContext(ctx).Should(BeTrue())
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -104,12 +110,28 @@ var _ = Describe("Policy discoverability reconciler", func() {
 		if err != nil {
 			return false
 		}
-		routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route, client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+		routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
 		if !found {
 			return false
 		}
 		condition := meta.FindStatusCondition(routeParentStatus.Conditions, conditionType)
-		return condition.Status == metav1.ConditionTrue && lo.EveryBy(policyKey, func(item client.ObjectKey) bool {
+		return condition != nil && condition.Status == metav1.ConditionTrue && lo.EveryBy(policyKey, func(item client.ObjectKey) bool {
+			return strings.Contains(condition.Message, item.String())
+		})
+	}
+
+	grpcRouteAffected := func(ctx context.Context, routeName, conditionType string, policyKey ...client.ObjectKey) bool {
+		route := &gatewayapiv1.GRPCRoute{}
+		err := k8sClient.Get(ctx, client.ObjectKey{Name: routeName, Namespace: testNamespace}, route)
+		if err != nil {
+			return false
+		}
+		routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+		if !found {
+			return false
+		}
+		condition := meta.FindStatusCondition(routeParentStatus.Conditions, conditionType)
+		return condition != nil && condition.Status == metav1.ConditionTrue && lo.EveryBy(policyKey, func(item client.ObjectKey) bool {
 			return strings.Contains(condition.Message, item.String())
 		})
 	}
@@ -226,7 +248,7 @@ var _ = Describe("Policy discoverability reconciler", func() {
 				if err != nil {
 					return false
 				}
-				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route, client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
 				return !found || meta.IsStatusConditionFalse(routeParentStatus.Conditions, policyAffectedCondition)
 			}).WithContext(ctx).Should(BeTrue())
 		}, testTimeOut)
@@ -274,7 +296,7 @@ var _ = Describe("Policy discoverability reconciler", func() {
 				if err != nil {
 					return false
 				}
-				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route, client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
 				return !found || meta.IsStatusConditionFalse(routeParentStatus.Conditions, policyAffectedCondition)
 			}).WithContext(ctx).Should(BeTrue())
 		}, testTimeOut)
@@ -517,7 +539,7 @@ var _ = Describe("Policy discoverability reconciler", func() {
 				if err != nil {
 					return false
 				}
-				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route, client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
 				return !found || meta.IsStatusConditionFalse(routeParentStatus.Conditions, policyAffectedCondition)
 			}).WithContext(ctx).Should(BeTrue())
 		}, testTimeOut)
@@ -565,7 +587,7 @@ var _ = Describe("Policy discoverability reconciler", func() {
 				if err != nil {
 					return false
 				}
-				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route, client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
 				return !found || meta.IsStatusConditionFalse(routeParentStatus.Conditions, policyAffectedCondition)
 			}).WithContext(ctx).Should(BeTrue())
 		}, testTimeOut)
@@ -1060,6 +1082,194 @@ var _ = Describe("Policy discoverability reconciler", func() {
 				// Route
 				g.Expect(routeAffected(ctx, TestHTTPRouteName, policyAffectedCondition, gwPolicyKey, lPolicyKey)).To(BeTrue())
 			}).WithContext(ctx).Should(Succeed())
+		}, testTimeOut)
+	})
+
+	Context("GRPCRoute AuthPolicy", func() {
+		policyAffectedCondition := controllers.PolicyAffectedConditionType("AuthPolicy")
+
+		It("adds PolicyAffected status condition to the targeted GRPCRoute", func(ctx SpecContext) {
+			policy := &kuadrantv1.AuthPolicy{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AuthPolicy",
+					APIVersion: kuadrantv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grpcbin-auth",
+					Namespace: testNamespace,
+				},
+				Spec: kuadrantv1.AuthPolicySpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+							Group: gatewayapiv1.GroupName,
+							Kind:  "GRPCRoute",
+							Name:  TestGRPCRouteName,
+						},
+					},
+					Defaults: &kuadrantv1.MergeableAuthPolicySpec{
+						AuthPolicySpecProper: kuadrantv1.AuthPolicySpecProper{
+							AuthScheme: &kuadrantv1.AuthSchemeSpec{
+								Authentication: map[string]kuadrantv1.MergeableAuthenticationSpec{
+									"anonymous": {
+										AuthenticationSpec: authorinoapi.AuthenticationSpec{
+											AuthenticationMethodSpec: authorinoapi.AuthenticationMethodSpec{
+												AnonymousAccess: &authorinoapi.AnonymousAccessSpec{},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+			Eventually(func() bool {
+				return tests.IsAuthPolicyAccepted(ctx, testClient(), policy)() &&
+					grpcRouteAffected(ctx, TestGRPCRouteName, policyAffectedCondition, client.ObjectKeyFromObject(policy))
+			}).WithContext(ctx).Should(BeTrue())
+		}, testTimeOut)
+
+		It("removes PolicyAffected status condition from the targeted GRPCRoute when the policy is deleted", func(ctx SpecContext) {
+			policy := &kuadrantv1.AuthPolicy{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AuthPolicy",
+					APIVersion: kuadrantv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grpcbin-auth",
+					Namespace: testNamespace,
+				},
+				Spec: kuadrantv1.AuthPolicySpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+							Group: gatewayapiv1.GroupName,
+							Kind:  "GRPCRoute",
+							Name:  TestGRPCRouteName,
+						},
+					},
+					Defaults: &kuadrantv1.MergeableAuthPolicySpec{
+						AuthPolicySpecProper: kuadrantv1.AuthPolicySpecProper{
+							AuthScheme: &kuadrantv1.AuthSchemeSpec{
+								Authentication: map[string]kuadrantv1.MergeableAuthenticationSpec{
+									"anonymous": {
+										AuthenticationSpec: authorinoapi.AuthenticationSpec{
+											AuthenticationMethodSpec: authorinoapi.AuthenticationMethodSpec{
+												AnonymousAccess: &authorinoapi.AnonymousAccessSpec{},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+			Eventually(func() bool {
+				return tests.IsAuthPolicyAccepted(ctx, testClient(), policy)() &&
+					grpcRouteAffected(ctx, TestGRPCRouteName, policyAffectedCondition, client.ObjectKeyFromObject(policy))
+			}).WithContext(ctx).Should(BeTrue())
+
+			Expect(k8sClient.Delete(ctx, policy)).To(Succeed())
+
+			Eventually(func() bool {
+				route := &gatewayapiv1.GRPCRoute{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: TestGRPCRouteName, Namespace: testNamespace}, route)
+				if err != nil {
+					return false
+				}
+				routeParentStatus, found := utils.Find(route.Status.RouteStatus.Parents, controllers.FindRouteParentStatusFunc(route.GetNamespace(), client.ObjectKey{Name: TestGatewayName, Namespace: testNamespace}, kuadrant.ControllerName))
+				return !found || meta.IsStatusConditionFalse(routeParentStatus.Conditions, policyAffectedCondition)
+			}).WithContext(ctx).Should(BeTrue())
+		}, testTimeOut)
+
+		It("adds PolicyAffected to GRPCRoute when gateway-targeted policy is created", func(ctx SpecContext) {
+			policy := &kuadrantv1.AuthPolicy{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AuthPolicy",
+					APIVersion: kuadrantv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "gateway-auth",
+					Namespace: testNamespace,
+				},
+				Spec: kuadrantv1.AuthPolicySpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+							Group: gatewayapiv1.GroupName,
+							Kind:  "Gateway",
+							Name:  TestGatewayName,
+						},
+					},
+					Defaults: &kuadrantv1.MergeableAuthPolicySpec{
+						AuthPolicySpecProper: kuadrantv1.AuthPolicySpecProper{
+							AuthScheme: &kuadrantv1.AuthSchemeSpec{
+								Authentication: map[string]kuadrantv1.MergeableAuthenticationSpec{
+									"anonymous": {
+										AuthenticationSpec: authorinoapi.AuthenticationSpec{
+											AuthenticationMethodSpec: authorinoapi.AuthenticationMethodSpec{
+												AnonymousAccess: &authorinoapi.AnonymousAccessSpec{},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+			policyKey := client.ObjectKeyFromObject(policy)
+
+			// Gateway policy should affect both HTTPRoute and GRPCRoute
+			Eventually(func() bool {
+				return tests.IsAuthPolicyAccepted(ctx, testClient(), policy)() &&
+					routeAffected(ctx, TestHTTPRouteName, policyAffectedCondition, policyKey) &&
+					grpcRouteAffected(ctx, TestGRPCRouteName, policyAffectedCondition, policyKey)
+			}).WithContext(ctx).Should(BeTrue())
+		}, testTimeOut)
+	})
+
+	Context("GRPCRoute RateLimitPolicy", func() {
+		policyAffectedCondition := controllers.PolicyAffectedConditionType("RateLimitPolicy")
+
+		It("adds PolicyAffected status condition to the targeted GRPCRoute", func(ctx SpecContext) {
+			policy := &kuadrantv1.RateLimitPolicy{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "RateLimitPolicy",
+					APIVersion: kuadrantv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "grpcbin-rlp",
+					Namespace: testNamespace,
+				},
+				Spec: kuadrantv1.RateLimitPolicySpec{
+					TargetRef: gatewayapiv1alpha2.LocalPolicyTargetReferenceWithSectionName{
+						LocalPolicyTargetReference: gatewayapiv1alpha2.LocalPolicyTargetReference{
+							Group: gatewayapiv1.GroupName,
+							Kind:  "GRPCRoute",
+							Name:  TestGRPCRouteName,
+						},
+					},
+					Defaults: &kuadrantv1.MergeableRateLimitPolicySpec{
+						RateLimitPolicySpecProper: kuadrantv1.RateLimitPolicySpecProper{
+							Limits: map[string]kuadrantv1.Limit{
+								"global": {
+									Rates: []kuadrantv1.Rate{
+										{Limit: 10, Window: kuadrantv1.Duration("10s")},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, policy)).To(Succeed())
+			Eventually(func() bool {
+				return tests.RLPIsAccepted(ctx, testClient(), client.ObjectKeyFromObject(policy))() &&
+					grpcRouteAffected(ctx, TestGRPCRouteName, policyAffectedCondition, client.ObjectKeyFromObject(policy))
+			}).WithContext(ctx).Should(BeTrue())
 		}, testTimeOut)
 	})
 })
