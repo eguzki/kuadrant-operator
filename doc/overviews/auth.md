@@ -220,11 +220,18 @@ The selectors within the `when` conditions of an AuthPolicy are a subset of Kuad
 
 Authorino [JSON path string modifiers](https://docs.kuadrant.io/latest/authorino/docs/features/#string-modifiers) can also be applied to the selectors within the `when` conditions of an AuthPolicy.
 
+## Egress
+
+AuthPolicy works on egress gateways with the same attachment model described above. On egress, the primary use case is **credential injection** — i.e., authenticating workloads using a common authentication mechanism at the gateway (e.g. Kubernetes service account tokens) and injecting specific external API credentials (e.g. API key fetched from Vault) into the outbound requests, typically replacing the `Authorization` header.
+
+The Gateway resource and policy attachment model are identical between ingress and egress — the Kuadrant operator does not distinguish between them. See the [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md) guide for a full walkthrough.
+
 ## Examples
 
 Check out the following user guides for examples of protecting services with Kuadrant:
 
 - [Enforcing authentication & authorization with Kuadrant AuthPolicy, for app developers and platform engineers](../user-guides/auth/auth-for-app-devs-and-platform-engineers.md)
+- [Egress Gateway Credential Injection](../user-guides/egress/credential-injection.md)
 - [Authenticated Rate Limiting for Application Developers](../user-guides/ratelimiting/authenticated-rl-for-app-developers.md)
 - [Authenticated Rate Limiting with JWTs and Kubernetes RBAC](../user-guides/ratelimiting/authenticated-rl-with-jwt-and-k8s-authnz.md)
 
