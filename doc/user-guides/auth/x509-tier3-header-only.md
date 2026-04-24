@@ -164,9 +164,20 @@ spec:
 
 **Example: Upstream proxy setting Client-Cert header** (RFC 9440 compliant):
 
-```nginx
-# Nginx example
-proxy_set_header Client-Cert $ssl_client_escaped_cert;
+```
+# Caddy example
+example.com {
+    tls {
+        client_auth {
+            mode require_and_verify
+            trusted_ca_cert_file /path/to/ca.pem
+        }
+    }
+
+    reverse_proxy upstream:8080 {
+        header_up Client-Cert ":{tls_client_certificate_der_base64}:"
+    }
+}
 ```
 
 The proxy extracts the client certificate from the TLS connection, encodes it in DER format, base64-encodes the bytes, and sets the `Client-Cert` header.
