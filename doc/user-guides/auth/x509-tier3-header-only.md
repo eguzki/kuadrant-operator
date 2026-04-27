@@ -164,7 +164,7 @@ spec:
 
 **Example: Upstream proxy setting Client-Cert header** (RFC 9440 compliant):
 
-```
+```caddyfile
 # Caddy example
 example.com {
     tls {

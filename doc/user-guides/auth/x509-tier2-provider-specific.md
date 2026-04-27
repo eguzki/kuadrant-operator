@@ -243,7 +243,7 @@ Similar to Istio (see [Istio Step 3](#step-3-configure-gateway)), but adjust `ga
 
 Patch the gateway deployment to mount the CA certificate Secret:
 
-> [!WARNING]
+> [!WARNING] Warning
 > This approach directly patches the gateway deployment, which is managed by the Envoy Gateway controller. In production environments, use proper configuration mechanisms (e.g., EnvoyProxy resource with extraVolumes) to ensure changes persist across controller reconciliations.
 
 ```bash
@@ -277,7 +277,7 @@ kubectl patch deployment -n gateway-system \
 Create an EnvoyPatchPolicy to configure client certificate validation:
 
 ```sh
-kubectl apply -f <<EOF
+kubectl apply -f -<<EOF
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyPatchPolicy
 metadata:
