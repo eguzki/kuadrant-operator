@@ -83,9 +83,7 @@ spec:
 
 **Tracing Configuration Fields:**
 
-- `defaultEndpoint`: The URL of the tracing collector backend (OTLP endpoint). Supported protocols:
-  - `rpc://` for gRPC OTLP (port 4317)
-  - `http://` for HTTP OTLP (port 4318)
+- `defaultEndpoint`: The URL of the tracing collector backend (OTLP endpoint). Use `rpc://` (gRPC OTLP, port 4317) for full compatibility across all components.
 - `insecure`: Set to `true` to skip TLS certificate verification (useful for development environments).
 
 **Important:** Point to the **collector** service (e.g., `jaeger-collector`), not the query service. The collector receives traces from your applications, while the query service is only for viewing traces in the UI.
