@@ -352,7 +352,7 @@ Test authentication scenarios by sending XFCC headers with certificate data:
 GATEWAY_IP=$(kubectl get gateway mtls-gateway -n gateway-system -o jsonpath='{.status.addresses[0].value}')
 
 # Send request with XFCC header containing the certificate
-curl -ik http://$GATEWAY_IP/get \
+curl -ik https://httpbin.$GATEWAY_IP.nip.io/get \
   -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/client.crt -outform DER | sha256);Cert=\"$(cat /tmp/client.crt | jq -sRr @uri)\";Subject=\"CN=test-client/O=Kuadrant/C=US\";URI="
 ```
 
@@ -361,7 +361,7 @@ curl -ik http://$GATEWAY_IP/get \
 ### Test 2: No certificate header
 
 ```bash
-curl -ik http://$GATEWAY_IP/get
+curl -ik https://httpbin.$GATEWAY_IP.nip.io/get
 ```
 
 **Expected**: HTTP 401. No XFCC header, authentication fails.
@@ -375,7 +375,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
   -subj "/CN=untrusted-client/O=Untrusted/C=US"
 
 # Try to connect
-curl -ik http://$GATEWAY_IP/get \
+curl -ik https://httpbin.$GATEWAY_IP.nip.io/get \
   -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/untrusted.crt -outform DER | sha256);Cert=\"$(cat /tmp/untrusted.crt | jq -sRr @uri)\";Subject=\"CN=untrusted-client/O=Untrusted/C=US\";URI="
 ```
 
@@ -440,13 +440,13 @@ kubectl label secret staging-ca \
 **Resolution**:
 ```bash
 # Check request headers reaching the gateway
-kubectl logs -n gateway-system -l istio=ingressgateway | grep -i x-forwarded-client-cert
+kubectl logs -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway | grep -i x-forwarded-client-cert
 
 # Verify upstream proxy configuration
 # (depends on your proxy implementation)
 
 # Test header spoofing risk (shows why upstream proxy is recommended)
-curl -ik http://$GATEWAY_IP/get \
+curl -ik https://httpbin.$GATEWAY_IP.nip.io/get \
   -H "x-forwarded-client-cert: Cert=\"...\""
 ```
 
@@ -469,7 +469,7 @@ kubectl get secret -n kuadrant-system -l app.kubernetes.io/name=trusted-client -
 openssl x509 -in /tmp/client.crt -noout -text | grep "TLS Web Client Authentication"
 
 # Check Authorino logs
-kubectl logs -n kuadrant-system -l authorino-resource-uid=<uid> | grep x509
+kubectl logs -n kuadrant-system -l authorino-resource=authorino | grep x509
 ```
 
 ## When to upgrade to Tier 1/2

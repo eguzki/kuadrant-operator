@@ -98,17 +98,18 @@ openssl x509 -req -sha512 \
 ### Step 2: Create CA certificate resources
 
 ```bash
-# Secret containing CA certificate for gateway validation
-kubectl create secret generic client-ca-cert \
-  -n istio-system \
+# ConfigMap for Gateway TLS validation (Layer 1)
+kubectl create configmap client-ca-bundle \
+  -n gateway-system \
   --from-file=ca.crt=/tmp/ca.crt
 
-# Secret for Authorino validation (same as Tier 1)
+# Secret for Authorino validation (Layer 2)
 kubectl create secret tls trusted-client-ca \
   -n kuadrant-system \
   --cert=/tmp/ca.crt \
   --key=/tmp/ca.key
 
+# Label the secret so Authorino can discover it
 kubectl label secret trusted-client-ca \
   -n kuadrant-system \
   authorino.kuadrant.io/managed-by=authorino \
@@ -128,24 +129,57 @@ This creates:
 - **TLSPolicy**: Kuadrant policy to manage the gateway's server TLS certificate
 - **Gateway**: Standard Gateway without `spec.tls.frontend.default.validation` (client certificate validation handled by EnvoyFilter)
 
-### Step 4: Create EnvoyFilter for mTLS validation
+### Step 4: Mount CA certificate into gateway pods
+
+Patch the gateway deployment to mount the CA certificate Secret:
+
+> [!WARNING] Warning
+> This approach directly patches the gateway deployment, which is managed by the gateway controller. In production environments, use proper configuration mechanisms (e.g., Istio Helm values or IstioOperator overlays) to ensure changes persist across controller reconciliations.
+
+```bash
+kubectl patch deployment -n gateway-system \
+  $(kubectl get deployment -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway -o jsonpath='{.items[0].metadata.name}') \
+  --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/volumes/-",
+    "value": {
+      "name": "client-ca-bundle",
+      "configMap": {
+        "name": "client-ca-bundle"
+      }
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/volumeMounts/-",
+    "value": {
+      "name": "client-ca-bundle",
+      "mountPath": "/etc/certs",
+      "readOnly": true
+    }
+  }
+]'
+```
+
+### Step 5: Create EnvoyFilter for mTLS validation
 
 Create an EnvoyFilter to configure Envoy's DownstreamTlsContext for client certificate validation:
 
 ```sh
-kubectl apply -f <<EOF
+kubectl apply -f -<<EOF
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: mtls-validation
-  namespace: istio-system
+  namespace: gateway-system
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: mtls-gateway
   configPatches:
-  # Enable TLS validation on the listener
-  - applyTo: LISTENER
+  - applyTo: FILTER_CHAIN
     match:
       context: GATEWAY
       listener:
@@ -153,35 +187,19 @@ spec:
     patch:
       operation: MERGE
       value:
-        filter_chains:
-        - transport_socket:
-            name: envoy.transport_sockets.tls
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-              common_tls_context:
-                validation_context:
-                  trusted_ca:
-                    filename: /etc/certs/ca-cert.crt
-              require_client_certificate: true # Rejects connections without valid client certificates
-  # Mount CA certificate into gateway pods
-  - applyTo: BOOTSTRAP
-    match:
-      context: GATEWAY
-    patch:
-      operation: MERGE
-      value:
-        volumes:
-        - name: client-ca-cert
-          secret:
-            secretName: client-ca-cert
-        volume_mounts:
-        - name: client-ca-cert
-          mountPath: /etc/certs
-          readOnly: true
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            commonTlsContext:
+              validationContext:
+                trustedCa:
+                  filename: /etc/certs/ca.crt
+            requireClientCertificate: true
 EOF
 ```
 
-### Step 5: Deploy application and create HTTPRoute
+### Step 6: Deploy application and create HTTPRoute
 
 ```bash
 # Deploy httpbin application
@@ -191,7 +209,7 @@ kubectl apply -f https://raw.githubusercontent.com/Kuadrant/kuadrant-operator/re
 kubectl apply -f https://raw.githubusercontent.com/Kuadrant/kuadrant-operator/refs/heads/main/examples/x509-authentication/httproute.yaml
 ```
 
-### Step 6: Configure AuthPolicy
+### Step 7: Configure AuthPolicy
 
 The AuthPolicy configuration is **identical to Tier 1** - it extracts the certificate from the XFCC header and validates it:
 
@@ -221,7 +239,40 @@ Same as Istio (see [Istio Step 2](#step-2-create-ca-certificate-resources))
 
 Similar to Istio (see [Istio Step 3](#step-3-configure-gateway)), but adjust `gatewayClassName` for Envoy Gateway.
 
-### Step 4: Create EnvoyPatchPolicy for mTLS validation
+### Step 4: Mount CA certificate into gateway pods
+
+Patch the gateway deployment to mount the CA certificate Secret:
+
+> [!WARNING]
+> This approach directly patches the gateway deployment, which is managed by the Envoy Gateway controller. In production environments, use proper configuration mechanisms (e.g., EnvoyProxy resource with extraVolumes) to ensure changes persist across controller reconciliations.
+
+```bash
+kubectl patch deployment -n gateway-system \
+  $(kubectl get deployment -n gateway-system -l gateway.envoyproxy.io/owning-gateway-name=mtls-gateway -o jsonpath='{.items[0].metadata.name}') \
+  --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/volumes/-",
+    "value": {
+      "name": "client-ca-bundle",
+      "configMap": {
+        "name": "client-ca-bundle"
+      }
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/volumeMounts/-",
+    "value": {
+      "name": "client-ca-bundle",
+      "mountPath": "/etc/certs",
+      "readOnly": true
+    }
+  }
+]'
+```
+
+### Step 5: Create EnvoyPatchPolicy for mTLS validation
 
 Create an EnvoyPatchPolicy to configure client certificate validation:
 
@@ -243,29 +294,26 @@ spec:
     name: https
     operation:
       op: add
-      path: "/filter_chains/0/transport_socket/typed_config/common_tls_context/validation_context"
+      path: "/filter_chains/0/transport_socket/typed_config/commonTlsContext/validationContext"
       value:
-        trusted_ca:
-          filename: /etc/envoy-gateway/client-ca/ca.crt
+        trustedCa:
+          filename: /etc/certs/ca.crt
   - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
     name: https
     operation:
       op: add
-      path: "/filter_chains/0/transport_socket/typed_config/require_client_certificate"
+      path: "/filter_chains/0/transport_socket/typed_config/commonTlsContext/requireClientCertificate"
       value: true
 EOF
 ```
 
-> [!NOTE] Note
-> Envoy Gateway may require additional configuration to mount the CA certificate ConfigMap into the gateway pods. Consult Envoy Gateway documentation for volume mount configuration.
+### Step 6: Deploy application and create HTTPRoute
 
-### Step 5: Deploy application and create HTTPRoute
+Same as Istio (see [Istio Step 6](#step-6-deploy-application-and-create-httproute))
 
-Same as Istio (see [Istio Step 5](#step-5-deploy-application-and-create-httproute))
+### Step 7: Configure AuthPolicy
 
-### Step 6: Configure AuthPolicy
-
-Same as Istio (see [Istio Step 6](#step-6-configure-authpolicy))
+Same as Istio (see [Istio Step 7](#step-7-configure-authpolicy))
 
 ---
 
@@ -317,7 +365,7 @@ When you upgrade to Gateway API v1.5+ and your gateway provider supports `spec.t
 2. **Remove provider-specific resource**:
    ```bash
    # For Istio
-   kubectl delete envoyfilter mtls-validation -n istio-system
+   kubectl delete envoyfilter mtls-validation -n gateway-system
 
    # For Envoy Gateway
    kubectl delete envoypatchpolicy mtls-validation -n gateway-system
@@ -343,14 +391,15 @@ When you upgrade to Gateway API v1.5+ and your gateway provider supports `spec.t
 **Resolution**:
 ```bash
 # Verify EnvoyFilter exists
-kubectl get envoyfilter mtls-validation -n istio-system
+kubectl get envoyfilter mtls-validation -n gateway-system
 
-# Check workloadSelector matches gateway pods
-kubectl get pods -n istio-system -l istio=ingressgateway --show-labels
+# Check targetRef points to gateway
+kubectl get envoyfilter mtls-validation -n gateway-system -o yaml | grep -A 3 targetRefs
 
 # Check Envoy configuration was patched
-kubectl exec -n istio-system deploy/istio-ingressgateway -- \
-  pilot-agent request GET config_dump | grep -A 20 validation_context
+kubectl exec -n gateway-system \
+  $(kubectl get pod -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway -o jsonpath='{.items[0].metadata.name}') \
+  -- curl -s localhost:15000/config_dump?include_eds | grep -A 20 validation_context
 ```
 
 ### CA certificate not mounted
@@ -359,14 +408,16 @@ kubectl exec -n istio-system deploy/istio-ingressgateway -- \
 
 **Resolution**:
 ```bash
-# Verify Secret exists
-kubectl get secret client-ca-cert -n istio-system
+# Verify ConfigMap exists
+kubectl get configmap client-ca-bundle -n gateway-system
 
 # Check volume mount in gateway pod
-kubectl describe pod -n istio-system -l istio=ingressgateway | grep -A 5 Mounts
+kubectl describe pod -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway | grep -A 5 Mounts
 
 # Verify file exists in pod
-kubectl exec -n istio-system deploy/istio-ingressgateway -- cat /etc/certs/ca-cert.crt
+kubectl exec -n gateway-system \
+  $(kubectl get pod -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway -o jsonpath='{.items[0].metadata.name}') \
+  -- cat /etc/certs/ca.crt
 ```
 
 ### XFCC header not set correctly
@@ -376,11 +427,12 @@ kubectl exec -n istio-system deploy/istio-ingressgateway -- cat /etc/certs/ca-ce
 **Resolution**:
 ```bash
 # Verify forward_client_cert_details configuration
-kubectl exec -n istio-system deploy/istio-ingressgateway -- \
-  pilot-agent request GET config_dump | grep -i forward_client_cert
+kubectl exec -n gateway-system \
+  $(kubectl get pod -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway -o jsonpath='{.items[0].metadata.name}') \
+  -- curl -s localhost:15000/config_dump?include_eds | grep -i forward_client_cert
 
 # Check Envoy access logs for XFCC
-kubectl logs -n istio-system -l istio=ingressgateway | grep XFCC
+kubectl logs -n gateway-system -l gateway.networking.k8s.io/gateway-name=mtls-gateway | grep XFCC
 ```
 
 ## See also

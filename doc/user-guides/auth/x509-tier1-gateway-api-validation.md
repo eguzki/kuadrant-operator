@@ -92,7 +92,7 @@ Create the CA certificate as a ConfigMap for gateway validation and as a Secret 
 
 ```bash
 # ConfigMap for Gateway TLS validation (Layer 1)
-kubectl create configmap client-ca-cert \
+kubectl create configmap client-ca-bundle \
   -n gateway-system \
   --from-file=ca.crt=/tmp/ca.crt
 
@@ -142,7 +142,7 @@ spec:
         validation:
           # Reference ConfigMap with trusted CA certificates
           caCertificateRefs:
-          - name: client-ca-cert
+          - name: client-ca-bundle
             kind: ConfigMap
             group: ""
           # Require valid client certificates (reject invalid ones at TLS layer)
@@ -444,7 +444,7 @@ graph TB
 
     subgraph "gateway-system namespace"
         GW[Gateway<br/>mtls-gateway]
-        CACM[(ConfigMap<br/>client-ca-cert)]
+        CACM[(ConfigMap<br/>client-ca-bundle)]
         TLSCERT[(Secret<br/>gateway-tls-cert)]
     end
 
@@ -542,7 +542,7 @@ kubectl logs -n kuadrant-system -l authorino-resource-uid=<uid> | grep x509
 **Resolution**:
 ```bash
 # Verify ConfigMap contains PEM-encoded CA
-kubectl get configmap client-ca-cert -n gateway-system -o yaml
+kubectl get configmap client-ca-bundle -n gateway-system -o yaml
 
 # Check certificate validity
 openssl x509 -in /tmp/client.crt -noout -dates
