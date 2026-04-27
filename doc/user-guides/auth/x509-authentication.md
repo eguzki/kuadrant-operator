@@ -45,7 +45,8 @@ Kuadrant supports three configuration tiers. Choose the one that matches your Ga
 - Supports Client-Cert header (RFC 9440) and custom headers
 - Works with trusted upstream proxies or when network controls prevent direct access
 
-**⚠️ Security warning**: Tier 3 makes Authorino the only layer of protection. Use Tier 1 or Tier 2 whenever possible. If you use Tier 3, ensure you understand the security implications.
+> [!WARNING] Security warning
+> Tier 3 makes Authorino the only layer of protection. Use Tier 1 or Tier 2 whenever possible. If you use Tier 3, ensure you understand the security implications.
 
 **→ [Follow the Tier 3 guide](x509-tier3-header-only.md)**
 
