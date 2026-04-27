@@ -302,7 +302,7 @@ spec:
     name: https
     operation:
       op: add
-      path: "/filter_chains/0/transport_socket/typed_config/commonTlsContext/requireClientCertificate"
+      path: "/filter_chains/0/transport_socket/typed_config/requireClientCertificate"
       value: true
 EOF
 ```
