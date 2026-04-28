@@ -50,7 +50,7 @@ The Cluster Operator manages shared infrastructure resources and establishes gov
 
 - Managing Gateways (`gateways`) - creating and configuring shared ingress gateways
 - Managing the Kuadrant instance (`kuadrants`)
-- Managing infrastructure components:
+- Viewing and configuring infrastructure components:
   - Limitador instances (`limitadors`)
   - Authorino instances (`authorinos`)
 - Managing DNS configuration:
@@ -125,8 +125,6 @@ rules:
   resources:
   - limitadors
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
@@ -146,8 +144,6 @@ rules:
   resources:
   - authorinos
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
@@ -355,7 +351,8 @@ subjects:
 With these permissions, Cluster Operators can:
 
 - Create and manage shared Gateways for multiple applications
-- Deploy and manage Kuadrant infrastructure (Kuadrant CR, Limitador, Authorino)
+- Deploy and manage Kuadrant infrastructure (Kuadrant CR)
+- View and configure infrastructure components (Limitador, Authorino)
 - Configure DNS and TLS for Gateways
 - Create Gateway-level policies (AuthPolicy, RateLimitPolicy targeting Gateways)
 - Monitor all policies and routes in the gateway-system namespace
@@ -744,7 +741,8 @@ subjects:
 With these permissions, Cluster Operators can:
 
 - Create and manage shared Gateways for multiple applications
-- Deploy and manage Kuadrant infrastructure (Kuadrant CR, Limitador, Authorino)
+- Deploy and manage Kuadrant infrastructure (Kuadrant CR)
+- View and configure infrastructure components (Limitador, Authorino)
 - Configure DNS and TLS for Gateways
 - Create Gateway-level policies (AuthPolicy, RateLimitPolicy, TokenRateLimitPolicy targeting Gateways)
 - Manage DNS provider credentials (Secrets)
