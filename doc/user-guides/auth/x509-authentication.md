@@ -53,7 +53,7 @@ Kuadrant supports three configuration tiers. Choose the one that matches your Ga
 ## Decision tree
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#fff','primaryTextColor':'#000','primaryBorderColor':'#000','lineColor':'#000','secondaryColor':'#fff','tertiaryColor':'#fff','clusterBkg':'#fff','clusterBorder':'#000','edgeLabelBackground':'#fff'}}}%%
+%%{init: {'theme':'neutral'}}%%
 graph TD
     Start[Need X.509 client authentication?]
     Start --> GatewayAPI{Gateway API v1.5+?}
@@ -70,18 +70,6 @@ graph TD
     Tier1 --> Tier1Link[Follow Tier 1 guide]
     Tier2 --> Tier2Link[Follow Tier 2 guide]
     Tier3 --> Tier3Link[Follow Tier 3 guide]
-
-    style Tier1 fill:none,stroke:#000,color:#000
-    style Tier2 fill:none,stroke:#000,color:#000
-    style Tier3 fill:none,stroke:#000,color:#000
-    style Reconsider fill:none,stroke:#000,color:#000
-    style Start fill:none,stroke:#000,color:#000
-    style GatewayAPI fill:none,stroke:#000,color:#000
-    style DefenseDepth fill:none,stroke:#000,color:#000
-    style AcceptL7 fill:none,stroke:#000,color:#000
-    style Tier1Link fill:none,stroke:#000,color:#000
-    style Tier2Link fill:none,stroke:#000,color:#000
-    style Tier3Link fill:none,stroke:#000,color:#000
 ```
 
 ## Understanding the tiers

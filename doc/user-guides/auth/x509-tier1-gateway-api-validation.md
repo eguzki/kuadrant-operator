@@ -117,6 +117,9 @@ kubectl label secret trusted-client-ca \
 
 Create a Gateway with `spec.tls.frontend.default.validation` to enable client certificate validation at the TLS layer:
 
+> [!NOTE]
+> The example file below also includes a cert-manager Issuer and TLSPolicy for automated server certificate provisioning. The Gateway configuration shown here highlights the key mTLS validation settings.
+
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -130,6 +133,9 @@ spec:
     protocol: HTTPS
     port: 443
     hostname: "*.nip.io"
+    allowedRoutes:
+      namespaces:
+        from: All
     tls:
       mode: Terminate
       certificateRefs:
@@ -192,16 +198,14 @@ spec:
   parentRefs:
   - name: mtls-gateway
     namespace: gateway-system
-  hostnames:
-  - "httpbin.*.nip.io"
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: "/"
+        value: /
     backendRefs:
     - name: httpbin
-      port: 8080
+      port: 80
 ```
 
 ### Step 6: Configure AuthPolicy for L7 validation
@@ -243,7 +247,7 @@ spec:
     response:
       success:
         headers:
-          "x-client-cn":
+          "x-client-common-name":
             plain:
               expression: auth.identity.CommonName
           "x-client-org":
@@ -438,7 +442,7 @@ spec:
 The following diagram illustrates the component relationships and request flow:
 
 ```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#fff','primaryTextColor':'#000','primaryBorderColor':'#000','lineColor':'#000','secondaryColor':'#fff','tertiaryColor':'#fff','clusterBkg':'#fff','clusterBorder':'#000','edgeLabelBackground':'#fff'}}}%%
+%%{init: {'theme':'neutral'}}%%
 graph TB
     Client([Client with<br/>X.509 Certificate])
 
@@ -467,16 +471,6 @@ graph TB
     SVC --> POD
     AP -.->|attached to| HR
     AP -.->|validates cert via<br/>label selector| CASEC
-
-    style GW fill:none,stroke:#000,color:#000
-    style HR fill:none,stroke:#000,color:#000
-    style AP fill:none,stroke:#000,color:#000
-    style CACM fill:none,stroke:#000,color:#000
-    style CASEC fill:none,stroke:#000,color:#000
-    style TLSCERT fill:none,stroke:#000,color:#000
-    style SVC fill:none,stroke:#000,color:#000
-    style POD fill:none,stroke:#000,color:#000
-    style Client fill:none,stroke:#000,color:#000
 ```
 
 ## Troubleshooting

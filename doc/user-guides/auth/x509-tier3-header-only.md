@@ -54,6 +54,7 @@ Tier 3 implements **single-layer validation** at the application level:
 **Required:**
 - **Kuadrant Operator**: Installed with Kuadrant instance deployed
 - **Security awareness**: Understanding of L7-only validation trade-offs
+- **jq**: Command-line JSON processor (for URL-encoding certificates in test commands)
 
 **Recommended:**
 - **Trusted upstream proxy**: Configured for mTLS, certificate header forwarding, and header spoofing prevention
@@ -353,7 +354,7 @@ GATEWAY_IP=$(kubectl get gateway mtls-gateway -n gateway-system -o jsonpath='{.s
 
 # Send request with XFCC header containing the certificate
 curl -ik https://httpbin.$GATEWAY_IP.nip.io/get \
-  -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/client.crt -outform DER | sha256);Cert=\"$(cat /tmp/client.crt | jq -sRr @uri)\";Subject=\"CN=test-client/O=Kuadrant/C=US\";URI="
+  -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/client.crt -outform DER | openssl dgst -sha256 | awk '{print $2}');Cert=\"$(cat /tmp/client.crt | jq -sRr @uri)\";Subject=\"CN=test-client/O=Kuadrant/C=US\";URI="
 ```
 
 **Expected**: HTTP 200. Authorino validates the certificate chain against trusted CAs and authorization succeeds.
@@ -376,7 +377,7 @@ openssl req -x509 -newkey rsa:2048 -nodes \
 
 # Try to connect
 curl -ik https://httpbin.$GATEWAY_IP.nip.io/get \
-  -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/untrusted.crt -outform DER | sha256);Cert=\"$(cat /tmp/untrusted.crt | jq -sRr @uri)\";Subject=\"CN=untrusted-client/O=Untrusted/C=US\";URI="
+  -H "X-Forwarded-Client-Cert: Hash=$(openssl x509 -in /tmp/untrusted.crt -outform DER | openssl dgst -sha256 | awk '{print $2}');Cert=\"$(cat /tmp/untrusted.crt | jq -sRr @uri)\";Subject=\"CN=untrusted-client/O=Untrusted/C=US\";URI="
 ```
 
 **Expected**: HTTP 401. Certificate doesn't chain to trusted CA, Authorino rejects.
