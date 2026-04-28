@@ -242,7 +242,7 @@ kubectl label secret customer-a-ca \
 ```
 
 > [!IMPORTANT] Cross-namespace trust
-> By default, Authorino only trusts CA secrets in the Kuadrant namespace. To allow cross-namespace references, set `allNamespaces: true` in the AuthPolicy, but use this with caution as it expands the trust scope.
+> By default, Authorino only trusts CA secrets in the Kuadrant namespace. To allow cross-namespace references, set `allNamespaces: true` in the x509 spec (`rules.authentication.x509.allNamespaces`), but use this with caution as it expands the trust scope.
 
 ## Certificate requirements and constraints
 
@@ -293,7 +293,7 @@ When X.509 authentication succeeds, the identity object (`auth.identity`) contai
 | `Province` | array of strings | 2.5.4.8 | Province/State (ST) | `["California"]` |
 | `StreetAddress` | array of strings | 2.5.4.9 | Street Address | `["123 Main St"]` |
 | `PostalCode` | array of strings | 2.5.4.17 | Postal Code | `["94105"]` |
-| `SerialNumber` | string | 2.5.4.5 | Subject serial number | `"01:23:45:67:89:AB:CD:EF"` |
+| `SerialNumber` | string | 2.5.4.5 | Subject serial number | `"12345"` |
 
 **Example - Use certificate attributes in authorization:**
 
