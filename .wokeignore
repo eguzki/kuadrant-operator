@@ -2,3 +2,4 @@ vendor/*
 third_party/*
 pkg/extension/grpc/*
 examples/grpc-backend/*
+doc/user-guides/ratelimiting/authenticated-rl-for-app-developers-grpc-services.md

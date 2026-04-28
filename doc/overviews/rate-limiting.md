@@ -2,7 +2,7 @@
 
 A Kuadrant RateLimitPolicy custom resource, often abbreviated "RateLimitPolicy":
 
-1. Targets Gateway API networking resources such as [HTTPRoutes](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute) and [Gateways](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway), using these resources to obtain additional context, i.e., which traffic workload (HTTP attributes, hostnames, user attributes, etc) to rate limit.
+1. Targets Gateway API networking resources such as [HTTPRoutes](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute), [GRPCRoutes](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.GRPCRoute), and [Gateways](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway), using these resources to obtain additional context, i.e., which traffic workload (HTTP attributes, hostnames, user attributes, etc) to rate limit.
 2. Supports targeting subsets (sections) of a network resource to apply the limits to.
 3. Abstracts the details of the underlying Rate Limit protocol and configuration resources, that have a much broader remit and surface area.
 4. Enables cluster operators to set defaults that govern behavior at the lower levels of the network, until a more specific policy is applied.
@@ -49,11 +49,11 @@ Check out the [API reference](../reference/ratelimitpolicy.md) for a full specif
 
 ## Using the RateLimitPolicy
 
-### Targeting a HTTPRoute networking resource
+### Targeting a HTTPRoute or GRPCRoute networking resource
 
-When a RateLimitPolicy targets a HTTPRoute, the policy is enforced to all traffic routed according to the rules and hostnames specified in the HTTPRoute, across all Gateways referenced in the `spec.parentRefs` field of the HTTPRoute.
+When a RateLimitPolicy targets a HTTPRoute or GRPCRoute, the policy is enforced to all traffic routed according to the rules and hostnames specified in the route, across all Gateways referenced in the `spec.parentRefs` field of the route.
 
-Target a HTTPRoute by setting the `spec.targetRef` field of the RateLimitPolicy as follows:
+Target a HTTPRoute (or GRPCRoute) by setting the `spec.targetRef` field of the RateLimitPolicy as follows:
 
 ```yaml
 apiVersion: kuadrant.io/v1
@@ -82,7 +82,7 @@ See more examples in [Overlapping Gateway and HTTPRoute RateLimitPolicies](#over
 
 A RateLimitPolicy that targets a Gateway can declare a block of _defaults_ (`spec.defaults`) or a block of _overrides_ (`spec.overrides`). As a standard, gateway policies that do not specify neither defaults nor overrides, act as defaults.
 
-When declaring _defaults_, a RateLimitPolicy which targets a Gateway will be enforced to all HTTP traffic hitting the gateway, unless a more specific RateLimitPolicy targeting a matching HTTPRoute exists. Any new HTTPRoute referrencing the gateway as parent will be automatically covered by the default RateLimitPolicy, as well as changes in the existing HTTPRoutes.
+When declaring _defaults_, a RateLimitPolicy which targets a Gateway will be enforced to all HTTP traffic hitting the gateway, unless a more specific RateLimitPolicy targeting a matching HTTPRoute or GRPCRoute exists. Any new route referencing the gateway as parent will be automatically covered by the default RateLimitPolicy, as well as changes in existing routes.
 
 _Defaults_ provide cluster operators with the ability to protect the infrastructure against unplanned and malicious network traffic attempt, such as by setting safe default limits on hostnames and hostname wildcards.
 
@@ -110,7 +110,7 @@ spec:
 
 Two possible semantics are to be considered here – gateway policy _defaults_ vs gateway policy _overrides_.
 
-Gateway RateLimitPolicies that declare _defaults_ (or alternatively neither defaults nor overrides) protect all traffic routed through the gateway except where a more specific HTTPRoute RateLimitPolicy exists, in which case the HTTPRoute RateLimitPolicy prevails.
+Gateway RateLimitPolicies that declare _defaults_ (or alternatively neither defaults nor overrides) protect all traffic routed through the gateway except where a more specific HTTPRoute or GRPCRoute RateLimitPolicy exists, in which case the route-level RateLimitPolicy prevails.
 
 Example with 4 RateLimitPolicies, 3 HTTPRoutes and 1 Gateway _default_ (plus 2 HTTPRoute and 2 Gateways without RateLimitPolicies attached):
 
@@ -209,10 +209,12 @@ Check out the following user guides for examples of rate limiting services with 
 - [Authenticated Rate Limiting for Application](../user-guides/ratelimiting/authenticated-rl-for-app-developers.md)
 - [Gateway Rate Limiting for Cluster Operators](../user-guides/ratelimiting/gateway-rl-for-cluster-operators.md)
 - [Authenticated Rate Limiting with JWTs and Kubernetes RBAC](../user-guides/ratelimiting/authenticated-rl-with-jwt-and-k8s-authnz.md)
+- [Authenticated Rate Limiting for gRPC Services](../user-guides/ratelimiting/authenticated-rl-for-app-developers-grpc-services.md)
 
 ### Known limitations
 
-- RateLimitPolicies can only target HTTPRoutes/Gateways defined within the same namespace of the RateLimitPolicy.
+- RateLimitPolicies can only target HTTPRoutes/GRPCRoutes/Gateways defined within the same namespace of the RateLimitPolicy.
+- Mixed HTTPRoute and GRPCRoute sharing the same hostname on a Gateway is not supported. Gateway implementations enforce [hostname uniqueness](https://gateway-api.sigs.k8s.io/concepts/api-overview/#hostname-matching) across route types — use separate hostnames for HTTP and gRPC traffic.
 
 ## Implementation details
 

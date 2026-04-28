@@ -13,7 +13,7 @@ Kuadrant AuthPolicy helps you accomplish these common security tasks:
 | **Secure API access with appropriate authentication** | APIs need protection but different use cases require different authentication methods | Choose from API keys, JWT/OIDC, X.509 certificates, OAuth2 introspection, Kubernetes TokenReview, or allow anonymous access based on your security and compliance requirements |
 | **Verify cryptographic identity with client certificates** | Your organization requires strong identity verification, zero-trust architecture, or compliance with security standards | Use X.509 client certificate authentication with defense-in-depth validation at both TLS and application layers |
 | **Control access with fine-grained authorization** | Authenticated users need different permissions based on roles, attributes, or complex business logic | Enforce authorization rules using pattern matching, OPA policies, Kubernetes RBAC, or SpiceDB |
-| **Apply consistent security policies across API infrastructure** | You manage multiple APIs and routes and need to balance developer flexibility with platform governance | Apply AuthPolicies at Gateway or HTTPRoute level with defaults and overrides to establish security baselines |
+| **Apply consistent security policies across API infrastructure** | You manage multiple APIs and routes and need to balance developer flexibility with platform governance | Apply AuthPolicies at Gateway, HTTPRoute, or GRPCRoute level with defaults and overrides to establish security baselines |
 | **Secure outbound API calls with centralized credential management** | Services call external APIs requiring authentication, and you want to avoid distributing secrets to every pod | Use egress gateway credential injection to authenticate internal workloads and inject external API credentials at the gateway |
 
 ## Understanding how Kuadrant auth integrates with your infrastructure
@@ -40,8 +40,8 @@ This approach provides several benefits:
 
 A Kuadrant AuthPolicy custom resource:
 
-1. **Targets Gateway API resources**: Attaches to [HTTPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute) or [Gateway](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway) to define which traffic to protect
-2. **Supports fine-grained targeting**: Apply policies to specific Gateway listeners or individual HTTPRoute rules using `sectionName`
+1. **Targets Gateway API resources**: Attaches to [HTTPRoute](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRoute), [GRPCRoute](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.GRPCRoute), or [Gateway](https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.Gateway) to define which traffic to protect
+2. **Supports fine-grained targeting**: Apply policies to specific Gateway listeners or individual HTTPRoute/GRPCRoute rules using `sectionName`
 3. **Abstracts complexity**: Simplifies Envoy External Authorization configuration while providing access to powerful authentication methods
 4. **Enables platform governance**: Platform engineers can set `defaults` to establish security baselines that apply until application teams define more specific policies
 5. **Enforces mandatory controls**: Platform engineers can set `overrides` to enforce organization-wide security requirements that cannot be weakened by route-level policies
@@ -92,15 +92,15 @@ The X.509 overview covers:
 
 When managing multiple APIs, routes, and gateways, you need flexible policy targeting that balances developer autonomy with platform governance. AuthPolicy provides multiple targeting options to match your organizational structure and security requirements.
 
-### Protect specific routes with HTTPRoute-targeted policies
+### Protect specific routes with HTTPRoute or GRPCRoute-targeted policies
 
-**Use HTTPRoute-targeted policies when:** Application teams own their routes and need to define authentication/authorization appropriate for their specific API endpoints.
+**Use route-targeted policies when:** Application teams own their routes and need to define authentication/authorization appropriate for their specific API endpoints.
 
-An AuthPolicy targeting an HTTPRoute can protect:
+An AuthPolicy targeting an HTTPRoute or GRPCRoute can protect:
 - **All traffic** for the entire route, or
-- **Specific rules** within the route by using `sectionName` to target individual HTTPRouteRules
+- **Specific rules** within the route by using `sectionName` to target individual route rules
 
-The policy applies to all hostnames and gateways referenced by the HTTPRoute. Use top-level `when` conditions (`spec.rules.when`) for additional filtering based on request attributes.
+The policy applies to all hostnames and gateways referenced by the HTTPRoute or GRPCRoute. Use top-level `when` conditions (`spec.rules.when`) for additional filtering based on request attributes.
 
 **Example - Protect an entire HTTPRoute:**
 
@@ -180,11 +180,11 @@ spec:
 
 **Use Gateway-targeted policies when:** Platform engineers need to enforce organization-wide security requirements, establish default authentication for all routes, or ensure no route can be deployed without minimum security controls.
 
-An AuthPolicy targeting a Gateway automatically applies to all routes attached to that gateway, including routes created after the policy. More specific HTTPRoute-targeted policies can override gateway defaults (unless you use `overrides` instead of `defaults`).
+An AuthPolicy targeting a Gateway automatically applies to all routes attached to that gateway, including routes created after the policy. More specific HTTPRoute or GRPCRoute-targeted policies can override gateway defaults (unless you use `overrides` instead of `defaults`).
 
 Key behaviors:
-- **Automatic coverage**: New HTTPRoutes attached to the gateway are automatically protected
-- **Defaults allow specificity**: HTTPRoute policies override gateway defaults, enabling application teams to customize authentication
+- **Automatic coverage**: New HTTPRoutes or GRPCRoutes attached to the gateway are automatically protected
+- **Defaults allow specificity**: Route-level policies override gateway defaults, enabling application teams to customize authentication
 - **Overrides enforce mandates**: Gateway overrides cannot be weakened by route-level policies, ensuring compliance requirements
 
 **Example - Establish default authentication for all routes:**
@@ -254,8 +254,8 @@ AuthPolicy provides two mechanisms based on Gateway API [GEP-713](https://gatewa
 Defaults and overrides work at any level of the Gateway API hierarchy:
 1. Gateway (broadest)
 2. Gateway listener (via `sectionName`)
-3. HTTPRoute
-4. HTTPRouteRule (via `sectionName`) (most specific)
+3. HTTPRoute / GRPCRoute
+4. HTTPRouteRule / GRPCRouteRule (via `sectionName`) (most specific)
 
 The "effective policy" for each request is computed based on hierarchy rules from [GEP-713](https://gateway-api.sigs.k8s.io/geps/gep-713/#resolving-conflicts). Kuadrant implements 4 [merge strategies](https://gateway-api.sigs.k8s.io/geps/gep-713/#designing-a-merge-strategy) allowing atomic or merged composition of policy rules:
 - **Atomic defaults:** The most specific policy fully replaces less specific ones for the topological scope it applies to. No merging of rules occurs. This is the default behavior.
@@ -377,8 +377,10 @@ Explore these user guides for complete examples of protecting services with Kuad
 ### Authentication with rate limiting
 - [Authenticated Rate Limiting for Application Developers](../user-guides/ratelimiting/authenticated-rl-for-app-developers.md)
 - [Authenticated Rate Limiting with JWTs and Kubernetes RBAC](../user-guides/ratelimiting/authenticated-rl-with-jwt-and-k8s-authnz.md)
+- [Authenticated Rate Limiting for gRPC Services](../user-guides/ratelimiting/authenticated-rl-for-app-developers-grpc-services.md)
 
 ## Known limitations
 
-- AuthPolicies can only target HTTPRoutes/Gateways defined within the same namespace of the AuthPolicy.
+- AuthPolicies can only target HTTPRoutes/GRPCRoutes/Gateways defined within the same namespace of the AuthPolicy.
+- Mixed HTTPRoute and GRPCRoute sharing the same hostname on a Gateway is not supported. Gateway implementations enforce [hostname uniqueness](https://gateway-api.sigs.k8s.io/concepts/api-overview/#hostname-matching) across route types — use separate hostnames for HTTP and gRPC traffic.
 - AuthPolicies that reference other Kubernetes objects (typically `Secret`s) require those objects to the created in the same namespace as the `Kuadrant` custom resource managing the deployment. This is the case of AuthPolicies that define API key authentication with `allNamespaces` option set to `false` (default), where the API key Secrets must be created in the Kuadrant CR namespace and not in the AuthPolicy namespace.

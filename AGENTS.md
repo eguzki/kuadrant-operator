@@ -127,7 +127,7 @@ Kuadrant implements a sophisticated policy attachment system based on Gateway AP
 - **TLSPolicy** (`api/v1/tlspolicy_types.go`): TLS certificate management via cert-manager
 - **TokenRateLimitPolicy** (`api/v1alpha1/tokenratelimitpolicy_types.go`): Token-based rate limiting for AI/LLM workloads
 
-Policies attach to Gateway API resources (Gateway, HTTPRoute) using `targetRef` fields and are reconciled through a workflow-based controller system.
+Policies attach to Gateway API resources (Gateway, HTTPRoute, GRPCRoute) using `targetRef` fields and are reconciled through a workflow-based controller system.
 
 ### Extensions System
 

@@ -40,11 +40,11 @@ metadata:
   name: my-plan-policy
 spec:
   # Reference to an existing networking resource to attach the policy to
-  # Can target Gateway or HTTPRoute resources
+  # Can target Gateway, HTTPRoute, or GRPCRoute resources
   # Must be in the same namespace as the PlanPolicy
   targetRef:
     group: gateway.networking.k8s.io
-    kind: HTTPRoute  # or Gateway
+    kind: HTTPRoute  # or GRPCRoute or Gateway
     name: my-route
   
   # List of plans ordered by priority (first match wins)
@@ -71,11 +71,11 @@ spec:
 
 ## Using the PlanPolicy
 
-### Targeting a HTTPRoute networking resource
+### Targeting a HTTPRoute or GRPCRoute networking resource
 
-When a PlanPolicy targets an HTTPRoute, the policy will be enforced on all traffic flowing through that specific route.
+When a PlanPolicy targets an HTTPRoute or GRPCRoute, the policy will be enforced on all traffic flowing through that specific route.
 
-Target an HTTPRoute by setting the `spec.targetRef` field of the PlanPolicy as follows:
+Target a route by setting the `spec.targetRef` field of the PlanPolicy as follows:
 
 ```yaml
 apiVersion: extensions.kuadrant.io/v1alpha1
@@ -85,7 +85,7 @@ metadata:
 spec:
   targetRef:
     group: gateway.networking.k8s.io
-    kind: HTTPRoute
+    kind: HTTPRoute # or GRPCRoute
     name: my-route
   plans:
     # ... plan definitions
@@ -172,6 +172,6 @@ Check out the following user guide for a complete example of using PlanPolicy:
 
 ## Known limitations
 
-- PlanPolicies can only target HTTPRoutes/Gateways defined within the same namespace as the PlanPolicy
+- PlanPolicies can only target HTTPRoutes/GRPCRoutes/Gateways defined within the same namespace as the PlanPolicy
 - Plan predicates are evaluated in order - ensure more specific plans come before general ones
 - Requires authentication to be configured via AuthPolicy for plan identification
