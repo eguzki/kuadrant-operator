@@ -367,7 +367,7 @@ See the [Egress Gateway Credential Injection](../user-guides/egress/credential-i
 Explore these user guides for complete examples of protecting services with Kuadrant AuthPolicy:
 
 ### Authentication examples
-- [X.509 Client Certificate Authentication](../user-guides/auth/x509-client-certificate-authentication.md) - Defense-in-depth mTLS with Gateway API v1.5 frontend TLS validation
+- [X.509 Client Certificate Authentication](../user-guides/auth/x509-authentication.md) - Defense-in-depth mTLS with three tier options (Gateway API v1.5+, provider-specific, or header-only)
 - [Anonymous Access](../user-guides/auth/anonymous-access.md) - Selectively allow unauthenticated access to specific routes
 - [Enforcing authentication & authorization with Kuadrant AuthPolicy, for app developers and platform engineers](../user-guides/auth/auth-for-app-devs-and-platform-engineers.md) - API key authentication with platform governance
 

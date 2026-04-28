@@ -101,7 +101,7 @@ spec:
               app.kubernetes.io/name: trusted-client
 ```
 
-See the [X.509 Client Certificate Authentication user guide](../user-guides/auth/x509-client-certificate-authentication.md) for a complete working example.
+See the [X.509 authentication user guides](../user-guides/auth/x509-authentication.md) for complete working examples for each tier.
 
 ### Tier 2: Provider-specific resources (Alternative for older Gateway API versions)
 
@@ -167,7 +167,8 @@ spec:
               tier: trusted-upstream
 ```
 
-**⚠️ Important:** Use Tier 1 or Tier 2 whenever possible. Only use Tier 3 in exceptional cases where gateway-level TLS validation is not feasible and you have a trusted upstream proxy.
+> [!WARNING] Important
+> Use Tier 1 or Tier 2 whenever possible. Only use Tier 3 in exceptional cases where gateway-level TLS validation is not feasible and you have a trusted upstream proxy.
 
 ## Certificate source options
 
@@ -362,7 +363,8 @@ With Tier 3 configuration, the proxy forwards the XFCC or Client-Cert header fro
 - Network topology prevents direct client access to the gateway
 - You understand and accept the L7-only validation trade-offs
 
-**⚠️ Warning:** Do not use Tier 3 configuration unless you trust the source of the certificate header and understand the security implications. When in doubt, use Tier 1 or Tier 2.
+> [!WARNING] Warning
+> Do not use Tier 3 configuration unless you trust the source of the certificate header and understand the security implications. When in doubt, use Tier 1 or Tier 2.
 
 ### CA certificate management
 
@@ -485,7 +487,10 @@ kubectl get authpolicy <policy-name> -o yaml | grep -A 5 selector
 
 ## See also
 
-- [X.509 Client Certificate Authentication user guide](../user-guides/auth/x509-client-certificate-authentication.md) - Complete working example with certificate generation and testing
+- [X.509 authentication user guides](../user-guides/auth/x509-authentication.md) - Choose your tier and follow step-by-step guides
+  - [Tier 1: Gateway API v1.5+](../user-guides/auth/x509-tier1-gateway-api-validation.md) - Recommended approach
+  - [Tier 2: Provider-specific](../user-guides/auth/x509-tier2-provider-specific.md) - Alternative for older Gateway API
+  - [Tier 3: Header-only](../user-guides/auth/x509-tier3-header-only.md) - Exceptional cases
 - [Authentication overview](auth.md#choosing-the-right-authentication-method) - Comparison of all authentication methods
 - [AuthPolicy API reference](../reference/authpolicy.md) - Complete AuthPolicy CRD specification
 - [RFC 0015: X.509 Client Certificate Authentication](https://github.com/Kuadrant/architecture/blob/main/rfcs/0015-x509-client-cert-authpolicy.md) - Design document and architectural decisions
