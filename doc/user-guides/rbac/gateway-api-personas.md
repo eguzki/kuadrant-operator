@@ -894,7 +894,11 @@ spec:
     - apiGroups:   ["kuadrant.io"]
       apiVersions: ["v1"]
       operations:  ["CREATE", "UPDATE"]
-      resources:   ["authpolicies", "ratelimitpolicies", "tokenratelimitpolicies"]
+      resources:   ["authpolicies", "ratelimitpolicies"]
+    - apiGroups:   ["kuadrant.io"]
+      apiVersions: ["v1alpha1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["tokenratelimitpolicies"]
   validations:
   - expression: 'object.spec.targetRef.kind in ["HTTPRoute", "GRPCRoute"]'
     message: "Policy targetRef.kind must be either 'HTTPRoute' or 'GRPCRoute'"
