@@ -36,7 +36,8 @@
 ### SectionName
 | Field       | Type                     | Required | Description                                                                                                                                                                                                                         |
 |-------------|--------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| SectionName | v1.SectionName (String)  | Yes      | SectionName is the name of a section in a Kubernetes resource. <br>In the following resources, SectionName is interpreted as the following: <br>* Gateway: Listener name<br>* HTTPRoute: HTTPRouteRule name<br>* Service: Port name |
+| SectionName | v1.SectionName (String)  | Yes      | SectionName is the name of a section in a Kubernetes resource. <br>In the following resources, SectionName is interpreted as the following: <br>- Gateway: Listener name<br>- HTTPRoute: HTTPRouteRule name<br>- GRPCRoute: GRPCRouteRule name<br>- Service: Port name |
+
 ### RateLimitPolicyCommonSpec
 
 | **Field** | **Type**                     | **Required** | **Description**                                                                                                              |
@@ -104,12 +105,12 @@ metadata:
   name: my-rate-limit-policy
 spec:
   # Reference to an existing networking resource to attach the policy to. REQUIRED.
-  # It can be a Gateway API HTTPRoute or Gateway resource.
+  # It can be a Gateway API HTTPRoute, GRPCRoute, or Gateway resource.
   # It can only refer to objects in the same namespace as the RateLimitPolicy.
   targetRef:
     group: gateway.networking.k8s.io
-    kind: HTTPRoute / Gateway
-    name: myroute / mygateway
+    kind: HTTPRoute # or GRPCRoute, Gateway
+    name: myroute
 
   # The limits definitions to apply to the network traffic routed through the targeted resource.
   # Equivalent to if otherwise declared within `defaults`.
@@ -126,7 +127,7 @@ spec:
       counters: […]
 
       # Additional dynamic conditions to trigger the limit.
-      # Use it for filtering attributes not supported by HTTPRouteRule or with RateLimitPolicies that target a Gateway.
+      # Use it for filtering attributes not supported by route rules or with RateLimitPolicies that target a Gateway.
       # Check out Kuadrant RFC 0002 (https://github.com/Kuadrant/architecture/blob/main/rfcs/0002-well-known-attributes.md) to learn more about the Well-known Attributes that can be used in this field.
       when: […]
 
