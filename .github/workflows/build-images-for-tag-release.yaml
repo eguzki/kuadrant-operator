@@ -47,7 +47,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
-          push: ${{ github.repository_owner == 'kuadrant' }}
+          push: ${{ github.repository_owner == 'eguzki' }}
           provenance: false
           tags: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}:${{ github.ref_name }}
           build-args: |
@@ -102,7 +102,7 @@ jobs:
           context: .
           file: ./bundle.Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
-          push: ${{ github.repository_owner == 'kuadrant' }}
+          push: ${{ github.repository_owner == 'eguzki' }}
           provenance: false
           tags: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-bundle:${{ needs.build.outputs.build-tags }}
       - name: Set outputs
@@ -165,7 +165,7 @@ jobs:
           context: ./catalog
           file: ./catalog/${{ env.OPERATOR_NAME }}-catalog.Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
-          push: ${{ github.repository_owner == 'kuadrant' }}
+          push: ${{ github.repository_owner == 'eguzki' }}
           provenance: false
           tags: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-catalog:${{ needs.build.outputs.build-tags }}
       - name: Set outputs

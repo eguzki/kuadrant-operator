@@ -224,8 +224,8 @@ metadata:
     capabilities: Basic Install
     categories: Integration & Delivery
     console.openshift.io/plugins: '["kuadrant-console-plugin"]'
-    containerImage: quay.io/kuadrant/kuadrant-operator:v1.6.1-rc1
-    createdAt: "2026-11-25T17:35:01Z"
+    containerImage: quay.io/eastizle/kuadrant-operator:v1.6.1-rc1
+    createdAt: "2026-11-26T10:47:15Z"
     description: A Kubernetes Operator to manage the lifecycle of the Kuadrant system
     operators.operatorframework.io/builder: operator-sdk-v1.42.3
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
@@ -776,34 +776,34 @@ spec:
                 - name: EXTENSIONS_SERVICE_PORT
                   value: "50052"
                 - name: RELATED_IMAGE_WASMSHIM
-                  value: quay.io/kuadrant/wasm-shim:v0.15.1
+                  value: quay.io/kuadrant/wasm-shim:latest
                 - name: RELATED_IMAGE_DEVELOPERPORTAL
-                  value: quay.io/kuadrant/developer-portal-controller:v0.3.2
+                  value: quay.io/kuadrant/developer-portal-controller:latest
                 - name: RELATED_IMAGE_CONSOLE_PLUGIN_LATEST
-                  value: quay.io/kuadrant/console-plugin:v0.7.3
+                  value: quay.io/kuadrant/console-plugin:latest
                 - name: RELATED_IMAGE_CONSOLE_PLUGIN_SDK1
                   value: quay.io/kuadrant/console-plugin:v0.6.0
                 - name: RELATED_IMAGE_CONSOLE_PLUGIN_PF5
                   value: quay.io/kuadrant/console-plugin:v0.1.5-2
                 - name: RELATED_IMAGE_DNS_OPERATOR
-                  value: quay.io/kuadrant/dns-operator:v0.18.1
+                  value: quay.io/kuadrant/dns-operator:latest
                 - name: RELATED_IMAGE_MCP_GATEWAY
-                  value: ghcr.io/kuadrant/mcp-controller:v1.1.1
+                  value: ghcr.io/kuadrant/mcp-controller:latest
                 - name: RELATED_IMAGE_MCP_GATEWAY_BROKER
-                  value: ghcr.io/kuadrant/mcp-gateway:v1.1.1
+                  value: ghcr.io/kuadrant/mcp-gateway:latest
                 - name: RELATED_IMAGE_AUTHORINO_OPERATOR
-                  value: quay.io/kuadrant/authorino-operator:v0.27.1
+                  value: quay.io/kuadrant/authorino-operator:latest
                 - name: RELATED_IMAGE_LIMITADOR_OPERATOR
-                  value: quay.io/kuadrant/limitador-operator:v0.20.0
+                  value: quay.io/kuadrant/limitador-operator:latest
                 - name: RELATED_IMAGE_AUTHORINO
-                  value: quay.io/kuadrant/authorino:v0.28.1
+                  value: quay.io/kuadrant/authorino:latest
                 - name: RELATED_IMAGE_LIMITADOR
-                  value: quay.io/kuadrant/limitador:v2.7.0
+                  value: quay.io/kuadrant/limitador:latest
                 - name: OPERATOR_NAMESPACE
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
-                image: quay.io/kuadrant/kuadrant-operator:v1.6.1-rc1
+                image: quay.io/eastizle/kuadrant-operator:v1.6.1-rc1
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -927,28 +927,28 @@ spec:
     name: Red Hat
     url: https://github.com/Kuadrant/kuadrant-operator
   relatedImages:
-  - image: quay.io/kuadrant/wasm-shim:v0.15.1
+  - image: quay.io/kuadrant/wasm-shim:latest
     name: wasmshim
-  - image: quay.io/kuadrant/developer-portal-controller:v0.3.2
+  - image: quay.io/kuadrant/developer-portal-controller:latest
     name: developerportal
-  - image: quay.io/kuadrant/console-plugin:v0.7.3
+  - image: quay.io/kuadrant/console-plugin:latest
     name: console-plugin-latest
   - image: quay.io/kuadrant/console-plugin:v0.6.0
     name: console-plugin-sdk1
   - image: quay.io/kuadrant/console-plugin:v0.1.5-2
     name: console-plugin-pf5
-  - image: quay.io/kuadrant/dns-operator:v0.18.1
+  - image: quay.io/kuadrant/dns-operator:latest
     name: dns-operator
-  - image: ghcr.io/kuadrant/mcp-controller:v1.1.1
+  - image: ghcr.io/kuadrant/mcp-controller:latest
     name: mcp-gateway
-  - image: ghcr.io/kuadrant/mcp-gateway:v1.1.1
+  - image: ghcr.io/kuadrant/mcp-gateway:latest
     name: mcp-gateway-broker
-  - image: quay.io/kuadrant/authorino-operator:v0.27.1
+  - image: quay.io/kuadrant/authorino-operator:latest
     name: authorino-operator
-  - image: quay.io/kuadrant/limitador-operator:v0.20.0
+  - image: quay.io/kuadrant/limitador-operator:latest
     name: limitador-operator
-  - image: quay.io/kuadrant/authorino:v0.28.1
+  - image: quay.io/kuadrant/authorino:latest
     name: authorino
-  - image: quay.io/kuadrant/limitador:v2.7.0
+  - image: quay.io/kuadrant/limitador:latest
     name: limitador
   version: 1.6.1-rc1
